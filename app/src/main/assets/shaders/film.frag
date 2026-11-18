@@ -15,7 +15,7 @@ uniform float uLutSize;
 
 uniform float uGrainAmount;
 uniform float uGrainChroma;
-uniform float uGrainShadow;
+uniform vec2 uGrainDensity;
 uniform vec2 uGrainUvScale;
 uniform vec2 uGrainOffset;
 uniform float uGrainLod;
@@ -26,7 +26,7 @@ uniform float uBloom;
 
 uniform float uVignette;
 uniform float uClarity;
-uniform float uSharpen;
+uniform float uAcutance;
 uniform vec2 uSrcStepX;
 uniform vec2 uSrcStepY;
 
@@ -51,10 +51,11 @@ vec3 filmGrain() {
 void main() {
     vec3 display = texture(uSource, vSrcUv).rgb;
 
-    if (uSharpen > 0.0) {
+    // Film never resolves a digital sensor's edge contrast; this applies its acutance.
+    if (uAcutance != 0.0) {
         vec3 around = texture(uSource, vSrcUv + uSrcStepX).rgb + texture(uSource, vSrcUv - uSrcStepX).rgb
                     + texture(uSource, vSrcUv + uSrcStepY).rgb + texture(uSource, vSrcUv - uSrcStepY).rgb;
-        display = clamp(display + (display - around * 0.25) * uSharpen * 1.6, 0.0, 1.0);
+        display = clamp(display + (display - around * 0.25) * uAcutance, 0.0, 1.0);
     }
 
     vec3 scene = displayToScene(display) * uInputGain;
@@ -79,8 +80,8 @@ void main() {
 
     // Grain perturbs exposure, so the characteristic curve shapes it the way a real emulsion does.
     float stops = level * LOG_RANGE_STOPS + LOG_MIN_STOPS;
-    float body = exp(-(stops + 0.5) * (stops + 0.5) / 20.0);
-    float weight = mix(0.5, 1.0, body) + uGrainShadow * smoothstep(-0.5, -5.0, stops);
+    // Granularity grows with the square root of the density formed (Selwyn's law).
+    float weight = sqrt(clamp(uGrainDensity.x + uGrainDensity.y * stops, 0.15, 2.5));
     encoded += filmGrain() * uGrainAmount * weight / LOG_RANGE_STOPS;
 
     // Sample at texel centres so 0 and 1 land exactly on the first and last LUT nodes.

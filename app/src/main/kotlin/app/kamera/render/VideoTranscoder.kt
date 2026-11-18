@@ -46,7 +46,7 @@ class VideoTranscoder(
 
     /** Runs to completion on the calling thread. Returns null if cancelled or failed. */
     fun run(onProgress: (Float) -> Unit): Result? {
-        val pending = writer.beginVideo(System.currentTimeMillis())
+        val pending = writer.beginVideo()
         return try {
             val result = transcode(pending, onProgress)
             if (result == null) writer.discardVideo(pending) else writer.finishVideo(pending)

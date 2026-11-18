@@ -7,7 +7,7 @@ import kotlin.math.abs
 
 class FilmResponseTest {
     private val out = FloatArray(3)
-    private val scratch = FloatArray(HueBands.COUNT)
+    private val scratch = FloatArray(FilmResponse.SCRATCH_SIZE)
 
     private fun neutral(response: FilmResponse, stops: Float): FloatArray {
         val encoded = (stops - FilmMath.LOG_MIN_STOPS) / FilmMath.LOG_RANGE_STOPS
@@ -17,12 +17,13 @@ class FilmResponseTest {
 
     @Test
     fun catalogueIsWellFormed() {
-        assertEquals(16, FilmCatalog.all.size)
+        assertEquals(24, FilmCatalog.all.size)
         assertEquals(FilmCatalog.all.size, FilmCatalog.all.map { it.id }.toSet().size)
         for (stock in FilmCatalog.all) {
             assertEquals(stock.id, 3, stock.hueShift.size - HueBands.COUNT + 3)
             for (row in 0 until 3) {
-                val sum = stock.sensitivity[row * 3] + stock.sensitivity[row * 3 + 1] + stock.sensitivity[row * 3 + 2]
+                val matrix = if (stock.isMonochrome) stock.sensitivity else stock.chemistry.layerMatrix
+                val sum = matrix[row * 3] + matrix[row * 3 + 1] + matrix[row * 3 + 2]
                 assertEquals("${stock.id} sensitivity row $row keeps neutrals neutral", 1f, sum, 0.001f)
                 val inter = stock.interlayer[row * 3] + stock.interlayer[row * 3 + 1] + stock.interlayer[row * 3 + 2]
                 assertEquals("${stock.id} interlayer row $row keeps neutrals neutral", 1f, inter, 0.001f)

@@ -38,7 +38,6 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import android.widget.Toast
 import app.kamera.camera.CameraControls
 import app.kamera.camera.CameraController
 import app.kamera.camera.CaptureMode
@@ -374,7 +373,7 @@ class CameraActivity : Activity(), CameraController.Listener, ViewfinderRenderer
         }
     }
 
-    private fun showMessage(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    private fun showMessage(message: String) = notice(message, long = true)
 
     // endregion
 
@@ -472,7 +471,7 @@ class CameraActivity : Activity(), CameraController.Listener, ViewfinderRenderer
         when {
             mode == CaptureMode.VIDEO -> if (recording) stopRecording() else startRecording()
             kamera.developer.backlog >= MAX_DARKROOM_BACKLOG -> {
-                Toast.makeText(this, "Developing… one moment", Toast.LENGTH_SHORT).show()
+                notice("Developing… one moment")
             }
             else -> controller.capture(deviceDegrees)
         }
@@ -762,7 +761,7 @@ class CameraActivity : Activity(), CameraController.Listener, ViewfinderRenderer
     private fun dialUnavailable(message: String) {
         activeReadout = null
         dial.visibility = View.GONE
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        notice(message)
     }
 
     // endregion

@@ -44,11 +44,11 @@ class Chip(context: Context, label: String) : TextView(context) {
     }
 
     private fun refresh() {
-        setTextColor(if (selectedChip) Palette.background else Palette.text)
+        setTextColor(if (selectedChip) Palette.amber else Palette.muted)
         background = rounded(
-            if (selectedChip) Palette.text else Color.TRANSPARENT,
+            if (selectedChip) Palette.raised else Color.TRANSPARENT,
             context.dpf(16),
-            if (selectedChip) Palette.text else Palette.line,
+            if (selectedChip) Palette.amber else Palette.line,
             context.dp(1),
         )
     }
@@ -279,9 +279,13 @@ class FilmBox(context: Context, val stock: FilmStock) : View(context) {
     private val isoPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Type.condensed }
     private val rect = RectF()
 
-    private val main = Color.rgb(stock.boxColor shr 16 and 255, stock.boxColor shr 8 and 255, stock.boxColor and 255)
-    private val accent = Color.rgb(stock.stripeColor shr 16 and 255, stock.stripeColor shr 8 and 255, stock.stripeColor and 255)
-    private val ink = if (Color.luminance(main) > 0.4f) Color.rgb(20, 20, 20) else Color.rgb(240, 236, 226)
+    private val main = dimmed(stock.boxColor)
+    private val accent = dimmed(stock.stripeColor)
+    private val ink = if (Color.luminance(main) > 0.16f) Color.rgb(8, 8, 8) else Palette.text
+
+    /** Box art is kept low-key so the film cabinet never glares in the dark. */
+    private fun dimmed(rgb: Int): Int =
+        Color.rgb((rgb shr 16 and 255) * 11 / 20, (rgb shr 8 and 255) * 11 / 20, (rgb and 255) * 11 / 20)
 
     override fun onDraw(canvas: Canvas) {
         val radius = context.dpf(6)

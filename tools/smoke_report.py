@@ -69,4 +69,80 @@ for photo_path in sorted(glob.glob(os.path.join(out, "photo-*.jpg"))):
         f"view {np.round(a.mean(axis=(0, 1)), 1).tolist()} photo {np.round(b.mean(axis=(0, 1)), 1).tolist()} "
         f"delta {np.round(delta, 1).tolist()}"
     )
+
+
+def jpeg_problems(path):
+    data = open(path, "rb").read()
+    found = []
+    position = 2
+    while position + 4 <= len(data) and data[position] == 0xFF:
+        marker = data[position + 1]
+        if marker == 0xDA:
+            break
+        length = int.from_bytes(data[position + 2:position + 4], "big")
+        payload = data[position + 4:position + 2 + length]
+        if marker == 0xE1 or marker == 0xFE or b"Exif" in payload or b"GPS" in payload or b"xmp" in payload.lower():
+            found.append(hex(marker))
+        position += 2 + length
+    return found
+
+
+def mp4_problems(path):
+    data = open(path, "rb").read()
+    found = []
+
+    def walk(start, end):
+        position = start
+        while position + 8 <= end:
+            size = int.from_bytes(data[position:position + 4], "big")
+            kind = data[position + 4:position + 8].decode("latin1")
+            head = 8
+            if size == 1:
+                size = int.from_bytes(data[position + 8:position + 16], "big")
+                head = 16
+            elif size == 0:
+                size = end - position
+            if size < head:
+                return
+            body = position + head
+            if kind in ("moov", "trak", "mdia"):
+                walk(body, position + size)
+            elif kind in ("udta", "meta"):
+                found.append(kind)
+            elif kind in ("mvhd", "tkhd", "mdhd"):
+                length = 16 if data[body] == 1 else 8
+                if any(data[body + 4:body + 4 + length]):
+                    found.append(kind + " date")
+            position += size
+
+    walk(0, len(data))
+    return found
+
+
+print("\nprivacy of saved files")
+for path in sorted(glob.glob(os.path.join(out, "photo-*.jpg"))):
+    issues = jpeg_problems(path)
+    print(os.path.basename(path), "clean" if not issues else f"METADATA {issues}")
+    problems += len(issues)
+clip = os.path.join(out, "clip.mp4")
+if os.path.exists(clip):
+    issues = mp4_problems(clip)
+    print("clip.mp4", "clean" if not issues else f"METADATA {issues}")
+    problems += len(issues)
+
+print("\ndarkness on a phone set to light mode (mean brightness, 0-255)")
+checks = [("00-first-launch", 0.0, 0.07, 0.15, 0.85, 45), ("10-film-cabinet", 0.62, 0.95, 0.05, 0.95, 80), ("35-delete-dialog", 0.42, 0.56, 0.2, 0.8, 75)]
+for name, y0, y1, x0, x1, limit in checks:
+    path = os.path.join(out, name + ".png")
+    if not os.path.exists(path):
+        print(name, "missing")
+        problems += 1
+        continue
+    pixels = np.asarray(Image.open(path).convert("L"), dtype=np.float32)
+    h, w = pixels.shape
+    value = float(pixels[int(h * y0):int(h * y1), int(w * x0):int(w * x1)].mean())
+    print(f"{name:18s} {value:6.1f} (limit {limit})")
+    if value > limit:
+        problems += 1
+
 sys.exit(1 if problems else 0)

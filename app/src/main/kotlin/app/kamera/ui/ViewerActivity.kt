@@ -165,7 +165,7 @@ class ViewerActivity : Activity() {
 
     private fun confirmDelete() {
         val item = items.getOrNull(index) ?: return
-        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("Delete this frame?")
             .setMessage("The picture and its negative will be removed from this device.")
             .setNegativeButton("Keep", null)

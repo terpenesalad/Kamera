@@ -55,8 +55,14 @@ class FilmResponse(stock: FilmStock, private val grade: ColorGrade) {
     private val passthrough = stock.id == FilmCatalog.NEUTRAL_ID
     private val passContrast = 2f.pow(grade.contrast.coerceIn(-1f, 1f) * 0.55f)
     private val passFade = grade.fade.coerceIn(0f, 1f) * 0.07f
-    private val sens = stock.sensitivity
-    private val inter = stock.interlayer
+    private val sens = if (stock.isMonochrome) stock.sensitivity else stock.chemistry.layerMatrix
+    private val spectral = if (stock.isMonochrome || stock.id == FilmCatalog.NEUTRAL_ID) null else SpectralChain(stock.chemistry)
+    private val reference = if (spectral == null) null else ReferenceEmulsion.forProcess(stock.chemistry.process)
+    private val chromaGain = 1f + 0.14f * grade.push.coerceIn(-1f, 2f)
+    private val inter = FloatArray(9) { i ->
+        val k = if (stock.isMonochrome) 0f else stock.chemistry.inhibitors
+        stock.interlayer[i] + if (i % 4 == 0) 2f * k else -k
+    }
 
     private val shadowSat = stock.shadowSaturation
     private val highlightSat = stock.highlightSaturation
@@ -74,7 +80,9 @@ class FilmResponse(stock: FilmStock, private val grade: ColorGrade) {
 
     private val push = grade.push.coerceIn(-1f, 2f)
 
-    private val hueShift = FloatArray(HueBands.COUNT) { stock.hueShift[it] + grade.mixerHue[it] * 30f }
+    private val hueShift = FloatArray(HueBands.COUNT) {
+        stock.hueShift[it] + grade.mixerHue[it] * 30f
+    }
     private val bandSat = FloatArray(HueBands.COUNT) {
         stock.bandSaturation[it] * 2f.pow(grade.mixerSaturation[it] * 1.2f)
     }
@@ -120,7 +128,7 @@ class FilmResponse(stock: FilmStock, private val grade: ColorGrade) {
 
     /**
      * Evaluates the response for log-encoded input and writes sRGB code values to [out].
-     * [scratch] must hold at least [HueBands.COUNT] floats; one per thread.
+     * [scratch] must hold at least [SCRATCH_SIZE] floats; one per thread.
      */
     fun evaluate(logR: Float, logG: Float, logB: Float, out: FloatArray, scratch: FloatArray) {
         val sceneR = FilmMath.logToScene(logR)
@@ -141,14 +149,48 @@ class FilmResponse(stock: FilmStock, private val grade: ColorGrade) {
         val yG = inter[3] * xR + inter[4] * xG + inter[5] * xB
         val yB = inter[6] * xR + inter[7] * xG + inter[8] * xB
 
-        // 3. Characteristic curves, then tonal grading in the log domain.
-        val tR = shapeTone(curveR.apply(yR.toDouble()).toFloat())
-        val tG = shapeTone(curveG.apply(yG.toDouble()).toFloat())
-        val tB = shapeTone(curveB.apply(yB.toDouble()).toFloat())
+        // 3. The stock's tone scale, driven by the pixel's luminance, then tonal grading.
+        val greyStops = if (spectral == null) yG else {
+            val shown = FilmMath.luma(displayLinear(sceneR), displayLinear(sceneG), displayLinear(sceneB))
+            val a = FilmMath.HIGHLIGHT_EXPANSION
+            val scene = (1f - FilmMath.MID_GREY * a) * shown / max(1f - a * shown, 1e-3f)
+            FilmMath.log2(max(scene, 1e-6f) / FilmMath.MID_GREY)
+        }
+        val tR = shapeTone(curveR.apply((if (spectral == null) yR else greyStops).toDouble()).toFloat())
+        val tG = shapeTone(curveG.apply(greyStops.toDouble()).toFloat())
+        val tB = shapeTone(curveB.apply((if (spectral == null) yB else greyStops).toDouble()).toFloat())
 
         var r = midR * pow2(tR)
         var g = midG * pow2(tG)
         var b = midB * pow2(tB)
+        if (spectral != null && reference != null) {
+            // 3b. Start from the scene's own colour, then apply what this emulsion's dyes do
+            // differently from a neutral reference emulsion at the same exposure.
+            val shownR = displayLinear(sceneR)
+            val shownG = displayLinear(sceneG)
+            val shownB = displayLinear(sceneB)
+            val shownLuma = max(FilmMath.luma(shownR, shownG, shownB), 1e-6f)
+            spectral.ratio(yR, yG, yB, greyStops, out, scratch)
+            val stockR = out[0]
+            val stockG = out[1]
+            val stockB = out[2]
+            val m = reference.matrix
+            val k = reference.inhibitors
+            val eR = FilmMath.log2(max(m[0] * sceneR + m[1] * sceneG + m[2] * sceneB, 1e-6f) / FilmMath.MID_GREY)
+            val eG = FilmMath.log2(max(m[3] * sceneR + m[4] * sceneG + m[5] * sceneB, 1e-6f) / FilmMath.MID_GREY)
+            val eB = FilmMath.log2(max(m[6] * sceneR + m[7] * sceneG + m[8] * sceneB, 1e-6f) / FilmMath.MID_GREY)
+            reference.chain.ratio(
+                eR + k * (2f * eR - eG - eB),
+                eG + k * (2f * eG - eR - eB),
+                eB + k * (2f * eB - eR - eG),
+                greyStops,
+                out,
+                scratch,
+            )
+            r *= (shownR / shownLuma).coerceIn(0.02f, 12f) * gained(stockR / out[0])
+            g *= (shownG / shownLuma).coerceIn(0.02f, 12f) * gained(stockG / out[1])
+            b *= (shownB / shownLuma).coerceIn(0.02f, 12f) * gained(stockB / out[2])
+        }
         if (passthrough) {
             r = passthroughTone(sceneR)
             g = passthroughTone(sceneG)
@@ -206,10 +248,17 @@ class FilmResponse(stock: FilmStock, private val grade: ColorGrade) {
         writeInGamut(labL, labA, labB, out)
     }
 
-    /** Undoes the input decode so "No film" returns the source, then applies the tonal sliders. */
-    private fun passthroughTone(scene: Float): Float {
+    private fun gained(ratio: Float): Float = if (chromaGain == 1f) ratio else ratio.toDouble().pow(chromaGain.toDouble()).toFloat()
+
+    /** Undoes the input decode, recovering the light the source picture actually displayed. */
+    private fun displayLinear(scene: Float): Float {
         val a = FilmMath.HIGHLIGHT_EXPANSION
-        val display = scene / ((1f - FilmMath.MID_GREY * a) + a * scene)
+        return scene / ((1f - FilmMath.MID_GREY * a) + a * scene)
+    }
+
+    /** Returns the source for "No film", then applies the tonal sliders. */
+    private fun passthroughTone(scene: Float): Float {
+        val display = displayLinear(scene)
         val stops = FilmMath.log2(max(display, 1e-5f) / FilmMath.MID_GREY) * passContrast
         val toned = FilmMath.MID_GREY * pow2(shapeTone(stops))
         return passFade + min(toned, 1f) * (1f - passFade)
@@ -241,11 +290,14 @@ class FilmResponse(stock: FilmStock, private val grade: ColorGrade) {
     }
 
     /** Converts Oklab to sRGB, pulling chroma toward neutral until the colour fits the gamut. */
-    private fun writeInGamut(l: Float, a: Float, b: Float, out: FloatArray) {
+    private fun writeInGamut(lightness: Float, a: Float, b: Float, out: FloatArray) {
+        var l = lightness
         var r = Oklab.toR(l, a, b)
         var g = Oklab.toG(l, a, b)
         var bl = Oklab.toB(l, a, b)
         if (!inGamut(r, g, bl)) {
+            // Dense dyes keep their colour by getting darker, so give up some lightness first.
+            l -= 0.09f * FilmMath.smoothstep(0.62f, 0.95f, l) * FilmMath.smoothstep(0.03f, 0.12f, Polar.chroma(a, b))
             var lo = 0f
             var hi = 1f
             repeat(8) {
@@ -270,7 +322,9 @@ class FilmResponse(stock: FilmStock, private val grade: ColorGrade) {
 
     private fun pow2(v: Float): Float = if (abs(v) < 1e-5f) 1f else 2f.pow(v)
 
-    private companion object {
-        const val GAMUT_EPS = 1e-4f
+    companion object {
+        /** Scratch floats [evaluate] needs per thread. */
+        const val SCRATCH_SIZE = 32
+        private const val GAMUT_EPS = 1e-4f
     }
 }

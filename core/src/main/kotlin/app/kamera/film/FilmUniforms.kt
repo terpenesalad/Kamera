@@ -4,6 +4,7 @@ import kotlin.math.log2
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
+import kotlin.math.sqrt
 
 /** Fixed resolutions of the glow buffers. They never depend on the output resolution. */
 object GlowChain {
@@ -27,7 +28,8 @@ class FilmUniforms(
     val inputGain: FloatArray,
     val grainAmount: Float,
     val grainChroma: Float,
-    val grainShadow: Float,
+    val grainDensityBase: Float,
+    val grainDensitySlope: Float,
     val grainUvScaleX: Float,
     val grainUvScaleY: Float,
     val grainLod: Float,
@@ -37,7 +39,9 @@ class FilmUniforms(
     val nearSigmaTexels: Float,
     val farSigmaTexels: Float,
     val vignette: Float,
-    val sharpen: Float,
+    /** Positive sharpens and negative softens, applied to the source before development. */
+    val acutance: Float,
+    val acutanceRadius: Float,
     val clarity: Float,
 ) {
     companion object {
@@ -45,6 +49,28 @@ class FilmUniforms(
         private const val FRAME_SHORT_EDGE_UM = 24000f
 
         private const val GRAIN_LOD_COMPENSATION = 0.115f
+        private const val RMS_APERTURE_UM = 48f
+
+        /** Brings grain measured on the GL bench onto the published scale. */
+        private const val RMS_BENCH_GAIN = 1.08f
+        private const val LOG10_2 = 0.30103f
+        private const val ACUTANCE_REFERENCE_EDGE = 1500f
+
+        /** Standard deviation of the unit-variance grain tile averaged over each mip level. */
+        private val TILE_MIP_STD = floatArrayOf(0.9976f, 0.7991f, 0.5134f, 0.2861f, 0.1497f, 0.0759f, 0.0369f, 0.0173f)
+
+        private fun tileStd(lod: Float): Float {
+            val clamped = lod.coerceIn(0f, TILE_MIP_STD.size - 1.001f)
+            val level = clamped.toInt()
+            return FilmMath.lerp(TILE_MIP_STD[level], TILE_MIP_STD[level + 1], clamped - level)
+        }
+
+        /** Mirrors the fine and coarse grain layers mixed in `film.frag`. */
+        private fun layeredGrainStd(lod: Float): Float {
+            val fine = 0.86f * tileStd(lod)
+            val coarse = 0.51f * tileStd(max(lod - 1.09f, 0f))
+            return sqrt(fine * fine + coarse * coarse)
+        }
 
         fun compute(
             stock: FilmStock,
@@ -71,15 +97,23 @@ class FilmUniforms(
             // image does. Measured on the GL bench; this keeps viewfinder grain equal to the photo's.
             val footprintGain = 1f + GRAIN_LOD_COMPENSATION * lod
 
+            // Calibrate against the published measure: density noise seen through a 48 µm aperture.
+            val gamma = stock.chemistry.filmGamma
+            val apertureLod = log2(max(RMS_APERTURE_UM / sizeUm, 1f))
+            val grainStops = RMS_BENCH_GAIN * stock.grain.rmsGranularity / 1000f / (gamma * LOG10_2 * layeredGrainStd(apertureLod))
+            val reversal = stock.chemistry.process == FilmProcess.REVERSAL
+            val densitySlope = gamma * LOG10_2 / if (reversal) -1.2f else 0.8f
+
             return FilmUniforms(
                 inputGain = floatArrayOf(
                     exposureGain * balance[0],
                     exposureGain * balance[1],
                     exposureGain * balance[2],
                 ),
-                grainAmount = stock.grain.rms * fx.grainAmount.coerceIn(0f, 3f) * pushGrain * footprintGain,
+                grainAmount = grainStops * fx.grainAmount.coerceIn(0f, 3f) * pushGrain * footprintGain,
                 grainChroma = if (stock.isMonochrome) 0f else stock.grain.chroma,
-                grainShadow = stock.grain.shadow,
+                grainDensityBase = 1f,
+                grainDensitySlope = densitySlope,
                 grainUvScaleX = tilesAcrossShortEdge * outputWidth / shortEdge,
                 grainUvScaleY = tilesAcrossShortEdge * outputHeight / shortEdge,
                 grainLod = lod,
@@ -95,7 +129,8 @@ class FilmUniforms(
                     GlowChain.MAX_SIGMA_TEXELS,
                 ),
                 vignette = stock.vignette * fx.vignette.coerceIn(0f, 4f),
-                sharpen = fx.sharpen.coerceIn(0f, 1f),
+                acutance = fx.sharpen.coerceIn(0f, 1f) * 1.6f - stock.softness,
+                acutanceRadius = max(shortEdge / ACUTANCE_REFERENCE_EDGE, 1f),
                 clarity = fx.clarity.coerceIn(-1f, 1f),
             )
         }

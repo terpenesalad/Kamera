@@ -287,7 +287,7 @@ class FilmEngine(assets: AssetManager) {
         p.set1f("uLutSize", LutBaker.SIZE.toFloat())
         p.set1f("uGrainAmount", u.grainAmount)
         p.set1f("uGrainChroma", u.grainChroma)
-        p.set1f("uGrainShadow", u.grainShadow)
+        p.set2f("uGrainDensity", u.grainDensityBase, u.grainDensitySlope)
         p.set2f("uGrainUvScale", u.grainUvScaleX, u.grainUvScaleY)
         p.set2f("uGrainOffset", grainOffsetX, grainOffsetY)
         p.set1f("uGrainLod", u.grainLod)
@@ -296,10 +296,11 @@ class FilmEngine(assets: AssetManager) {
         p.set1f("uBloom", u.bloomAmount)
         p.set1f("uVignette", u.vignette)
         p.set1f("uClarity", u.clarity)
-        p.set1f("uSharpen", u.sharpen)
+        p.set1f("uAcutance", u.acutance)
         val m = source.matrix
-        p.set2f("uSrcStepX", m.a / target.width, m.d / target.width)
-        p.set2f("uSrcStepY", m.b / target.height, m.e / target.height)
+        val radius = u.acutanceRadius
+        p.set2f("uSrcStepX", m.a * radius / target.width, m.d * radius / target.width)
+        p.set2f("uSrcStepY", m.b * radius / target.height, m.e * radius / target.height)
         if (viewfinder) {
             p.set1f("uZebra", if (zebra) 1f else 0f)
             p.set1f("uPeaking", if (peaking) 1f else 0f)

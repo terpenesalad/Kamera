@@ -23,15 +23,19 @@ Grain is applied before the LUT, so the film's characteristic curve shapes it th
 
 `FilmResponse` evaluates one stock under one grade:
 
-1. Spectral sensitivity matrix (per layer)
-2. Interlayer effects in the log domain
-3. Per-channel characteristic curve with soft toe and shoulder, solved to pass exactly through middle grey
-4. Tonal grading in log space
+1. Spectral sensitivity of each emulsion layer, reduced to a matrix over Rec.709 scene light
+2. Interlayer (DIR coupler) effects in the log domain
+3. A per-channel tone scale with soft toe and shoulder, solved to pass exactly through middle grey
+4. `SpectralChain`: dye formation, light through the film, print paper exposure and print dyes. The result
+   is compared with a neutral reference emulsion, so each stock differs only through its own chemistry
 5. Hue, chroma and lightness character per hue band in Oklab
 6. Split toning and gamut mapping
 
-`LutBaker` samples this model into a 33³ `RGB10_A2` cube. Sliders that change colour rebake the cube on a
+`LutBaker` samples this model into a 41³ `RGB10_A2` cube. Sliders that change colour rebake the cube on a
 background thread; exposure, white balance and spatial effects are shader uniforms and update instantly.
+
+Grain amplitude is derived from each stock's RMS granularity: density noise through a 48 µm aperture on a
+24 mm frame. `tools/shader-lab` measures this back from rendered pixels.
 
 ## Threads
 
@@ -46,7 +50,7 @@ background thread; exposure, white balance and spatial effects are shader unifor
 
 ## Storage
 
-Each library item lives in `files/library/<id>/`: `negative.jpg` (the upright undeveloped frame),
+Finished files carry no EXIF, and `Mp4Scrubber` clears dates and device tags from videos. Each library item lives in `files/library/<id>/`: `negative.jpg` (the upright undeveloped frame),
 `recipe.txt`, `thumb.jpg` and `meta.txt`. Finished pictures are published to `DCIM/Kamera`. Clips recorded in
 the app carry their film look in the footage, so the editor grades them without developing them twice.
 

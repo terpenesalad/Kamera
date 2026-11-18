@@ -19,7 +19,6 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
-import android.widget.Toast
 import app.kamera.data.LibraryItem
 import app.kamera.data.MediaKind
 import app.kamera.film.ColorGrade
@@ -158,7 +157,7 @@ class EditorActivity : Activity(), SurfaceHolder.Callback {
                 val bitmap = decodeBounded({ item.negative.takeIf { it.exists() }?.inputStream() }, PREVIEW_EDGE)
                 main.post {
                     if (bitmap == null) {
-                        Toast.makeText(this, "This picture's negative is missing.", Toast.LENGTH_LONG).show()
+                        notice("This picture's negative is missing.", long = true)
                         finish()
                     } else {
                         renderer.setPicture(bitmap)
@@ -181,7 +180,7 @@ class EditorActivity : Activity(), SurfaceHolder.Callback {
                 main.post(trimLoop)
             } catch (e: Exception) {
                 mediaPlayer.release()
-                Toast.makeText(this, "This clip can't be played.", Toast.LENGTH_LONG).show()
+                notice("This clip can't be played.", long = true)
             }
         }
     }
@@ -383,9 +382,9 @@ class EditorActivity : Activity(), SurfaceHolder.Callback {
         kamera.developer.redevelop(item, recipe) { updated ->
             busyOverlay.visibility = View.GONE
             if (updated == null) {
-                Toast.makeText(this, "Developing failed. Your original is untouched.", Toast.LENGTH_LONG).show()
+                notice("Developing failed. Your original is untouched.", long = true)
             } else {
-                Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
+                notice("Saved")
                 finish()
             }
         }
@@ -413,9 +412,9 @@ class EditorActivity : Activity(), SurfaceHolder.Callback {
             main.post {
                 busyOverlay.visibility = View.GONE
                 if (result == null) {
-                    Toast.makeText(this, "Export failed. Your original is untouched.", Toast.LENGTH_LONG).show()
+                    notice("Export failed. Your original is untouched.", long = true)
                 } else {
-                    Toast.makeText(this, "Saved as a new clip", Toast.LENGTH_SHORT).show()
+                    notice("Saved as a new clip")
                     finish()
                 }
             }

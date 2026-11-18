@@ -5,7 +5,7 @@ import java.util.stream.IntStream
 /** Bakes a [FilmResponse] into a 3D lookup table for the GPU. */
 object LutBaker {
     /** Nodes per axis. Accuracy against the analytic model is enforced by `LutAccuracyTest`. */
-    const val SIZE = 33
+    const val SIZE = 41
 
     /**
      * Returns `SIZE³` pixels packed as `GL_RGB10_A2` / `GL_UNSIGNED_INT_2_10_10_10_REV`,
@@ -17,7 +17,7 @@ object LutBaker {
         val step = 1f / (size - 1)
         IntStream.range(0, size).parallel().forEach { b ->
             val out = FloatArray(3)
-            val scratch = FloatArray(HueBands.COUNT)
+            val scratch = FloatArray(FilmResponse.SCRATCH_SIZE)
             var index = b * size * size
             for (g in 0 until size) {
                 for (r in 0 until size) {

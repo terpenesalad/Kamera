@@ -36,7 +36,7 @@ class LutAccuracyTest {
     /** Largest channel error at each sampled colour, sorted ascending. */
     private fun errors(stock: FilmStock, sample: (Random) -> FloatArray): FloatArray {
         val random = Random(7)
-        val scratch = FloatArray(HueBands.COUNT)
+        val scratch = FloatArray(FilmResponse.SCRATCH_SIZE)
         val exact = FloatArray(3)
         val baked = FloatArray(3)
         val response = FilmResponse(stock, ColorGrade())

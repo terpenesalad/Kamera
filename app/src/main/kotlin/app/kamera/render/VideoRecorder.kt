@@ -29,8 +29,7 @@ class VideoRecorder(
 ) {
     class Result(val uri: Uri, val width: Int, val height: Int, val durationMs: Long)
 
-    private val startedAt = System.currentTimeMillis()
-    private val pending = writer.beginVideo(startedAt)
+    private val pending = writer.beginVideo()
     private val muxer = MediaMuxer(pending.descriptor.fileDescriptor, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
     private val videoThread = HandlerThread("VideoEncoder").apply { start() }
 

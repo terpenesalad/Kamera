@@ -4,17 +4,14 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
-import android.media.ExifInterface
 import android.net.Uri
 import android.opengl.GLES30
 import android.opengl.GLUtils
-import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
 import android.util.Log
 import app.kamera.camera.StillCapture
-import app.kamera.camera.StillMeta
 import app.kamera.data.Library
 import app.kamera.data.LibraryItem
 import app.kamera.data.MediaKind
@@ -35,9 +32,6 @@ import app.kamera.gl.SourceFrame
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -117,7 +111,6 @@ class PhotoDeveloper(
         GlTextures.delete(luma)
         GlTextures.delete(chroma)
 
-        val created = System.currentTimeMillis()
         val placeholder = library.newItem(MediaKind.PHOTO, negW, negH, 0L, null, filmBaked = false)
         try {
             val negativeBitmap = readTexture(film, negative)
@@ -125,7 +118,7 @@ class PhotoDeveloper(
             negativeBitmap.recycle()
             placeholder.writeRecipe(recipe)
             val developed = developTexture(film, negative.texture, negW, negH, flippedV = false, recipe)
-            val item = publish(placeholder, developed, recipe, created, still.meta, existing = null)
+            val item = publish(placeholder, developed, existing = null)
             developed.recycle()
             Log.i(TAG, "Developed ${item.width}x${item.height} on ${recipe.stockId} in ${android.os.SystemClock.elapsedRealtime() - startedMs} ms")
             return item
@@ -143,7 +136,7 @@ class PhotoDeveloper(
                 val developed = developBitmap(film, negative, recipe)
                 negative.recycle()
                 item.writeRecipe(recipe)
-                val updated = publish(item, developed, recipe, item.createdMs, null, existing = item.mediaUri)
+                val updated = publish(item, developed, existing = item.mediaUri)
                 developed.recycle()
                 updated
             }.onFailure { Log.e(TAG, "Developing failed", it) }.getOrNull()
@@ -173,7 +166,7 @@ class PhotoDeveloper(
                 item.writeRecipe(recipe)
                 val developed = developBitmap(film, bitmap, recipe)
                 bitmap.recycle()
-                val published = publish(item, developed, recipe, item.createdMs, null, existing = null)
+                val published = publish(item, developed, existing = null)
                 developed.recycle()
                 published
             }.onFailure { Log.e(TAG, "Import failed", it) }.getOrNull()
@@ -244,9 +237,6 @@ class PhotoDeveloper(
     private fun publish(
         item: LibraryItem,
         developed: Bitmap,
-        recipe: Recipe,
-        takenMs: Long,
-        meta: StillMeta?,
         existing: Uri?,
     ): LibraryItem {
         val scale = THUMB_EDGE.toFloat() / max(developed.width, developed.height)
@@ -261,35 +251,15 @@ class PhotoDeveloper(
 
         val temp = File.createTempFile("develop", ".jpg", context.cacheDir)
         try {
+            // Encoded straight from pixels, so the file carries no EXIF, location, date or device data.
             writeJpeg(developed, temp, FINAL_QUALITY)
-            writeExif(temp, recipe, takenMs, meta)
-            val uri = writer.saveJpeg(temp, takenMs, existing)
+            val uri = writer.saveJpeg(temp, existing)
             val updated = item.copy(mediaUri = uri, width = developed.width, height = developed.height)
             library.commit(updated)
             return updated
         } finally {
             temp.delete()
         }
-    }
-
-    private fun writeExif(file: File, recipe: Recipe, takenMs: Long, meta: StillMeta?) {
-        val stock = FilmCatalog.find(recipe.stockId)
-        val exif = ExifInterface(file.path)
-        val date = SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US).format(Date(takenMs))
-        exif.setAttribute(ExifInterface.TAG_DATETIME, date)
-        exif.setAttribute(ExifInterface.TAG_DATETIME_ORIGINAL, date)
-        exif.setAttribute(ExifInterface.TAG_MAKE, Build.MANUFACTURER)
-        exif.setAttribute(ExifInterface.TAG_MODEL, Build.MODEL)
-        exif.setAttribute(ExifInterface.TAG_SOFTWARE, "Kamera")
-        exif.setAttribute(ExifInterface.TAG_IMAGE_DESCRIPTION, "${stock.name} (ISO ${stock.iso})")
-        exif.setAttribute(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL.toString())
-        if (meta != null) {
-            exif.setAttribute(ExifInterface.TAG_ISO_SPEED_RATINGS, meta.iso.toString())
-            exif.setAttribute(ExifInterface.TAG_EXPOSURE_TIME, "${meta.shutterNs / 1000L}/1000000")
-            exif.setAttribute(ExifInterface.TAG_F_NUMBER, "${(meta.aperture * 100).roundToInt()}/100")
-            exif.setAttribute(ExifInterface.TAG_FOCAL_LENGTH, "${(meta.focalLength * 100).roundToInt()}/100")
-        }
-        exif.saveAttributes()
     }
 
     private companion object {

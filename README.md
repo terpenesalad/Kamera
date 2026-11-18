@@ -8,18 +8,15 @@ again on a different stock later.
 
 ## Install
 
-1. Open the [latest release](../../releases/latest) on your phone.
-2. Download the `Kamera-1.0.x.apk` file and open it.
-3. Allow installs from your browser if Android asks, then tap **Install**.
+**[Download Kamera.apk](https://github.com/terpenesalad/Kamera/releases/latest/download/Kamera.apk)** on your phone and open it. Allow installs from your browser if Android asks, then tap **Install**.
 
-Kamera needs Android 11 or newer and OpenGL ES 3.0. New releases install over the old one and keep
-your library.
+The same file is kept up to date at [`Kamera.apk`](Kamera.apk) in this repository. Kamera needs Android 11 or newer and OpenGL ES 3.0. New versions install over the old one and keep your library.
 
 ## What's inside
 
-**Sixteen film stocks**
+**Twenty-four looks**
 
-| Family | Stock | Leans towards |
+| Family | Look | Leans towards |
 | --- | --- | --- |
 | Colour negative | Aura 160, Aura 400, Aura 800 | Portra 160 / 400 / 800 |
 | | Meridian 400 | Pro 400H |
@@ -29,20 +26,37 @@ your library.
 | | Nocturne 800T | CineStill 800T |
 | Slide | Chroma 50, Chroma 100 | Velvia 50, Provia 100F |
 | | Archive 64 | Kodachrome 64 |
+| Classic simulations | Documentary, Street Neg, Nostalgia | Classic Chrome, Classic Negative, Nostalgic Neg |
+| | Soft Slide, Flat Cine, True Neg | Astia, Eterna, Reala Ace |
 | Black & white | Silver 100, Silver 400, Silver 3200 | Acros 100, Tri-X 400, P3200 |
+| | Silver 100 Ye, Silver 100 R | Acros with yellow and red filters |
 
-The stocks are original interpretations tuned by eye against test charts. They are not measured
-profiles and are not affiliated with the films they reference.
+These are original interpretations built on a physical film model. They are not measured profiles or
+exact copies, and Kamera is not affiliated with the films and simulations it references.
+
+**How the film is simulated:** each emulsion's layers respond to light by wavelength, form cyan, magenta and
+yellow dyes, and (for negatives) expose a simulated print paper. Grain follows the RMS granularity scale film
+makers publish, scales with density, and is shaped by the film's response curve. Halation, bloom and the
+softer acutance of film are simulated too.
 
 **Camera:** manual shutter, ISO, focus, exposure compensation and white balance (presets, Kelvin, or
-balanced to the loaded film) · push and pull development · 3:2, 4:3, 1:1, 5:4, 16:9 and 65:24 formats ·
-1080p and 4K video at 24 to 60 fps in 16:9, 1.85 and 2.39 · live histogram, zebras, focus peaking, grid and
-level · volume-key shutter.
+balanced to the loaded film) · a 35 mm view on wide phone lenses · push and pull development · 3:2, 4:3, 1:1,
+5:4, 16:9 and 65:24 formats · 1080p and 4K video at 24 to 60 fps in 16:9, 1.85 and 2.39 · live histogram,
+zebras, focus peaking, grid and level · volume-key shutter.
 
-**Darkroom:** re-develop on any stock · exposure, contrast, highlights, shadows, whites, blacks, fade ·
+**Darkroom:** re-develop on any look · exposure, contrast, highlights, shadows, whites, blacks, fade ·
 temperature, tint, saturation, vibrance, seven-band colour mixer, split toning · grain, halation, bloom,
 vignette, clarity, sharpening · crop, straighten, rotate, mirror · video trim and grade · import from your
 gallery.
+
+**Always dark:** every screen stays dark, even if your phone is set to light mode.
+
+## Privacy
+
+- Saved photos contain only the picture: no location, date, camera model or settings.
+- Saved videos have their recording dates and device tags removed.
+- File names are random, so they don't reveal when something was taken.
+- Kamera has no location or internet permission, so it can't read your position or send anything anywhere.
 
 ## How the viewfinder matches the final picture
 

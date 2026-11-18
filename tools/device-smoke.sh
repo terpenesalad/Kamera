@@ -20,6 +20,8 @@ adb shell settings put global window_animation_scale 0
 adb shell settings put global transition_animation_scale 0
 adb shell settings put global animator_duration_scale 0
 adb shell settings put global hide_error_dialogs 1
+# The app must stay dark even on a phone set to light mode.
+adb shell cmd uimode night no
 adb logcat -G 16M
 adb logcat -c
 sleep 30
@@ -105,9 +107,18 @@ expect() {
 }
 tap "$(dp 52)" $(( H - $(dp 88) )); sleep 8; shot 30-gallery; expect GalleryActivity
 tap $(( W / 2 )) "$(dp 200)"; sleep 10; shot 31-viewer; expect ViewerActivity
+tap $(( W * 5 / 6 )) $(( H - $(dp 58) )); sleep 4; shot 35-delete-dialog
+tap_text Keep; sleep 3
 tap $(( W / 2 )) $(( H - $(dp 58) )); sleep 15; shot 32-darkroom; expect EditorActivity
 tap_text LIGHT; sleep 4; shot 34-darkroom-light
 tap $(( W - $(dp 23) )) "$(dp 66)"; sleep 25; shot 33-after-save; expect ViewerActivity
+
+note "privacy"
+PERMS=$(adb shell dumpsys package $PKG | grep -E "android\.permission\.[A-Z_]+" | tr -d ' ' | sort -u)
+echo "$PERMS"
+if echo "$PERMS" | grep -qE "INTERNET|LOCATION"; then fail "the app can reach the network or location"; fi
+BADNAMES=$(adb shell ls /sdcard/DCIM/Kamera | tr -d '\r' | grep -vE '^KMR_[0-9a-f]{16}\.(jpg|mp4)$')
+if [ -n "$BADNAMES" ]; then fail "file names reveal information: $BADNAMES"; fi
 
 adb logcat -d > "$OUT/logcat.txt"
 note "app log"

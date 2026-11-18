@@ -9,6 +9,7 @@ const shaderDir = path.resolve(__dirname, '../../app/src/main/assets/shaders');
 const shaders = Object.fromEntries(fs.readdirSync(shaderDir).map((f) => [f, fs.readFileSync(path.join(shaderDir, f), 'utf8')]));
 
 async function pageMain(payload) {
+  const LUT_SIZE = 41;
   const canvas = document.createElement('canvas');
   const gl = canvas.getContext('webgl2', { preserveDrawingBuffer: false });
   if (!gl) throw new Error('webgl2 unavailable');
@@ -67,7 +68,7 @@ async function pageMain(payload) {
     if (luts[id]) return luts[id];
     const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_3D, t);
     const bytes = b64(payload.luts[id]);
-    gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGB10_A2, 33, 33, 33, 0, gl.RGBA, gl.UNSIGNED_INT_2_10_10_10_REV, new Uint32Array(bytes.buffer));
+    gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGB10_A2, LUT_SIZE, LUT_SIZE, LUT_SIZE, 0, gl.RGBA, gl.UNSIGNED_INT_2_10_10_10_REV, new Uint32Array(bytes.buffer));
     for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_3D, k, v);
     return (luts[id] = t);
   };
@@ -108,12 +109,12 @@ async function pageMain(payload) {
     const p = P.film; begin(p, out, FLIPV, -1);
     bindTex(0, gl.TEXTURE_2D, srcTex); bindTex(1, gl.TEXTURE_3D, lutTexture(job.stock)); bindTex(2, gl.TEXTURE_2D, grain); bindTex(3, gl.TEXTURE_2D, near.t); bindTex(4, gl.TEXTURE_2D, far.t);
     [['uSource', 0], ['uLut', 1], ['uGrain', 2], ['uGlowNear', 3], ['uGlowFar', 4]].forEach(([n, i]) => gl.uniform1i(p.u(n), i));
-    gl.uniform3fv(p.u('uInputGain'), u.gain); gl.uniform1f(p.u('uLutSize'), 33);
-    gl.uniform1f(p.u('uGrainAmount'), job.noGrain ? 0 : u.grainAmount); gl.uniform1f(p.u('uGrainChroma'), u.grainChroma); gl.uniform1f(p.u('uGrainShadow'), u.grainShadow);
+    gl.uniform3fv(p.u('uInputGain'), u.gain); gl.uniform1f(p.u('uLutSize'), LUT_SIZE);
+    gl.uniform1f(p.u('uGrainAmount'), job.noGrain ? 0 : u.grainAmount); gl.uniform1f(p.u('uGrainChroma'), u.grainChroma); gl.uniform2fv(p.u('uGrainDensity'), u.grainDensity);
     gl.uniform2fv(p.u('uGrainUvScale'), u.grainUvScale); gl.uniform2f(p.u('uGrainOffset'), job.seedX || 0, job.seedY || 0); gl.uniform1f(p.u('uGrainLod'), u.grainLod);
     gl.uniform1f(p.u('uHalation'), u.halation); gl.uniform3fv(p.u('uHalationTint'), u.halationTint); gl.uniform1f(p.u('uBloom'), u.bloom);
-    gl.uniform1f(p.u('uVignette'), u.vignette); gl.uniform1f(p.u('uClarity'), u.clarity); gl.uniform1f(p.u('uSharpen'), u.sharpen);
-    gl.uniform2f(p.u('uSrcStepX'), 1 / sw, 0); gl.uniform2f(p.u('uSrcStepY'), 0, 1 / sh);
+    gl.uniform1f(p.u('uVignette'), u.vignette); gl.uniform1f(p.u('uClarity'), u.clarity); gl.uniform1f(p.u('uAcutance'), u.acutance);
+    gl.uniform2f(p.u('uSrcStepX'), u.acutanceRadius / job.outW, 0); gl.uniform2f(p.u('uSrcStepY'), 0, u.acutanceRadius / job.outH);
     draw();
     const pixels = new Uint8Array(job.outW * job.outH * 4);
     gl.bindFramebuffer(gl.FRAMEBUFFER, out.f); gl.readPixels(0, 0, job.outW, job.outH, gl.RGBA, gl.UNSIGNED_BYTE, pixels);

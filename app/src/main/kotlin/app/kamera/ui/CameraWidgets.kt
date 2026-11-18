@@ -199,7 +199,7 @@ class FinderOverlay(context: Context) : View(context) {
         bins.forEachIndexed { i, v -> histPath.lineTo(left + w * i / (bins.size - 1), bottom - h * v) }
         histPath.lineTo(left + w, bottom)
         histPath.close()
-        fill.color = Color.argb(210, 238, 233, 221)
+        fill.color = Palette.muted
         canvas.drawPath(histPath, fill)
     }
 }

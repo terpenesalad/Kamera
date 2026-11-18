@@ -15,7 +15,6 @@ import android.widget.BaseAdapter
 import android.widget.FrameLayout
 import android.widget.GridView
 import android.widget.ImageView
-import android.widget.Toast
 import app.kamera.data.LibraryItem
 import app.kamera.data.MediaKind
 import app.kamera.film.Recipe
@@ -123,10 +122,10 @@ class GalleryActivity : Activity() {
     }
 
     private fun importPhoto(uri: Uri) {
-        Toast.makeText(this, "Developing…", Toast.LENGTH_SHORT).show()
+        notice("Developing…")
         kamera.developer.importPhoto(uri, kamera.settings.stockId) { item ->
             if (item == null) {
-                Toast.makeText(this, "That picture could not be opened.", Toast.LENGTH_LONG).show()
+                notice("That picture could not be opened.", long = true)
             } else {
                 openEditor(item)
             }
@@ -158,7 +157,7 @@ class GalleryActivity : Activity() {
                 app.library.commit(item)
             }
             main.post {
-                if (item == null) Toast.makeText(this, "That clip could not be opened.", Toast.LENGTH_LONG).show() else openEditor(item)
+                if (item == null) notice("That clip could not be opened.", long = true) else openEditor(item)
             }
         }
     }

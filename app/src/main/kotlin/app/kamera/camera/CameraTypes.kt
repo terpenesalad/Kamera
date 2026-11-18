@@ -48,9 +48,6 @@ data class Telemetry(
     val focused: Boolean,
 )
 
-/** Exposure data stored in a photo's EXIF. */
-data class StillMeta(val iso: Int, val shutterNs: Long, val aperture: Float, val focalLength: Float)
-
 /** A captured frame copied out of the camera's buffers, ready to be developed. */
 class StillCapture(
     val width: Int,
@@ -60,7 +57,6 @@ class StillCapture(
     val sensorDegrees: Int,
     val frontFacing: Boolean,
     val deviceDegrees: Int,
-    val meta: StillMeta,
 )
 
 /** Capabilities of one camera, resolved once and reused. */
@@ -71,7 +67,6 @@ class LensInfo(val id: String, characteristics: CameraCharacteristics) {
     val activeArray: Rect = characteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE) ?: Rect(0, 0, 4000, 3000)
     val hasFlash: Boolean = characteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
     val minFocusDiopters: Float = characteristics.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f
-    val aperture: Float = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_APERTURES)?.firstOrNull() ?: 1.8f
     val focalLength: Float = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)?.firstOrNull() ?: 4.5f
 
     /** 35 mm-equivalent focal length of the main lens at 1×. */
@@ -94,6 +89,7 @@ class LensInfo(val id: String, characteristics: CameraCharacteristics) {
     val manualSensor: Boolean =
         CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR in capabilities && isoRange != null && shutterRange != null
 
+    val tonemapModes: IntArray = characteristics.get(CameraCharacteristics.TONEMAP_AVAILABLE_TONE_MAP_MODES) ?: IntArray(0)
     val afModes: IntArray = characteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES) ?: IntArray(0)
     val awbModes: IntArray = characteristics.get(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES) ?: IntArray(0)
     val noiseModes: IntArray = characteristics.get(CameraCharacteristics.NOISE_REDUCTION_AVAILABLE_NOISE_REDUCTION_MODES) ?: IntArray(0)
@@ -134,8 +130,11 @@ class LensInfo(val id: String, characteristics: CameraCharacteristics) {
         val stops = ArrayList<Float>()
         if (minZoom < 0.95f) stops.add(minZoom)
         stops.add(1f)
+        // The classic 35 mm street-camera view, when the main lens is wider than that.
+        val classic = 35f / equivalentMm
+        if (classic in 1.1f..maxZoom) stops.add(classic)
         for (z in listOf(2f, 3f, 5f)) if (z <= maxZoom + 0.01f) stops.add(z)
-        return stops.take(4)
+        return stops.take(5)
     }
 
     /** The largest still size, capped to what the GPU can develop. */

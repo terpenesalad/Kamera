@@ -345,6 +345,12 @@ class CameraController(context: Context, private val listener: Listener) {
         b.set(CaptureRequest.CONTROL_AWB_MODE, if (awb in info.awbModes) awb else CameraMetadata.CONTROL_AWB_MODE_AUTO)
         b.set(CaptureRequest.CONTROL_AWB_LOCK, awbLocked)
 
+        // A known, flat tone curve gives the film model real scene light instead of a phone's look.
+        if (CameraMetadata.TONEMAP_MODE_PRESET_CURVE in info.tonemapModes) {
+            b.set(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_PRESET_CURVE)
+            b.set(CaptureRequest.TONEMAP_PRESET_CURVE, CameraMetadata.TONEMAP_PRESET_CURVE_SRGB)
+        }
+
         // Keep the ISP out of the way: the film look supplies its own texture and acutance.
         val noise = if (still) CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY else CameraMetadata.NOISE_REDUCTION_MODE_FAST
         if (noise in info.noiseModes) b.set(CaptureRequest.NOISE_REDUCTION_MODE, noise)
@@ -545,18 +551,12 @@ class CameraController(context: Context, private val listener: Listener) {
 
     private fun deliverIfComplete() {
         val image = pendingImage ?: return
-        val result = pendingResult ?: return
+        pendingResult ?: return
         val info = lens ?: return
         pendingImage = null
         pendingResult = null
         try {
-            val meta = StillMeta(
-                iso = result.get(CaptureResult.SENSOR_SENSITIVITY) ?: lastIso,
-                shutterNs = result.get(CaptureResult.SENSOR_EXPOSURE_TIME) ?: lastShutterNs,
-                aperture = result.get(CaptureResult.LENS_APERTURE) ?: info.aperture,
-                focalLength = result.get(CaptureResult.LENS_FOCAL_LENGTH) ?: info.focalLength,
-            )
-            listener.onStillCaptured(copyImage(image, info, meta))
+            listener.onStillCaptured(copyImage(image, info))
             finishCapture(success = true)
         } catch (e: OutOfMemoryError) {
             Log.e(TAG, "Not enough memory for this photo", e)
@@ -567,7 +567,7 @@ class CameraController(context: Context, private val listener: Listener) {
     }
 
     /** Copies an image into tightly packed planes so the camera buffer can be returned at once. */
-    private fun copyImage(image: Image, info: LensInfo, meta: StillMeta): StillCapture {
+    private fun copyImage(image: Image, info: LensInfo): StillCapture {
         val width = image.width
         val height = image.height
         val yPlane = image.planes[0]
@@ -605,7 +605,7 @@ class CameraController(context: Context, private val listener: Listener) {
             chroma.put(packed)
         }
         chroma.position(0)
-        return StillCapture(width, height, luma, chroma, info.sensorDegrees, info.frontFacing, deviceDegrees, meta)
+        return StillCapture(width, height, luma, chroma, info.sensorDegrees, info.frontFacing, deviceDegrees)
     }
 
     private fun finishCapture(success: Boolean) {

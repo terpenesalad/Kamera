@@ -5,18 +5,19 @@ enum class FilmKind(val label: String) {
     COLOR_NEGATIVE("Colour negative"),
     CINEMA("Motion picture"),
     REVERSAL("Slide"),
+    DIGITAL("Classic simulations"),
     MONOCHROME("Black & white"),
 }
 
 /**
  * Grain as a physical property of the emulsion.
  *
- * @property rms     Density fluctuation in stops, measured at the film plane.
+ * @property rmsGranularity Density fluctuation ×1000 through a 48 µm aperture at a density of 1.0,
+ *                          the scale film manufacturers publish.
  * @property sizeUm  Correlation length of the grain clumps in micrometres on a 24 mm tall frame.
  * @property chroma  0 = luminance-only grain, 1 = fully independent dye clouds per layer.
- * @property shadow  Extra weight in the shadows (fast and pushed films get rougher there).
  */
-data class GrainSpec(val rms: Float, val sizeUm: Float, val chroma: Float, val shadow: Float = 0.25f)
+data class GrainSpec(val rmsGranularity: Float, val sizeUm: Float, val chroma: Float)
 
 /**
  * Light scattered back through the emulsion from the film base.
@@ -49,7 +50,9 @@ class FilmStock(
     /** Daylight (5500) or tungsten (3200) balance; used by the camera's "Film" white balance. */
     val balanceKelvin: Int = 5500,
 
-    /** Spectral response of the three emulsion layers, as a row-major 3×3 over linear Rec.709. */
+    /** Dyes and layer sensitivities of a colour emulsion. */
+    val chemistry: Chemistry = Chemistry.forKind(kind),
+    /** Panchromatic response of a monochrome emulsion, as a row-major 3×3 over linear Rec.709. */
     val sensitivity: FloatArray = IDENTITY,
     /** Interlayer (DIR coupler) effects between layers in the log domain, row-major 3×3. */
     val interlayer: FloatArray = IDENTITY,
@@ -83,6 +86,8 @@ class FilmStock(
     val halation: HalationSpec,
     val bloom: BloomSpec,
     val vignette: Float = 0.08f,
+    /** How much the emulsion and enlarging lens soften fine detail, 0..1. */
+    val softness: Float = 0.3f,
 ) {
     val isMonochrome: Boolean get() = kind == FilmKind.MONOCHROME
 

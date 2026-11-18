@@ -1,5 +1,6 @@
 package app.kamera.ui
 
+import android.app.Activity
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
@@ -15,16 +16,16 @@ import kotlin.math.roundToInt
 
 /** Kamera's visual language: a dark instrument panel with one signal colour. */
 object Palette {
-    val background = Color.rgb(9, 9, 10)
-    val surface = Color.rgb(20, 20, 22)
-    val raised = Color.rgb(32, 32, 35)
-    val line = Color.rgb(50, 50, 54)
-    val text = Color.rgb(238, 233, 221)
-    val muted = Color.rgb(146, 143, 135)
-    val faint = Color.rgb(92, 90, 85)
-    val signal = Color.rgb(242, 92, 42)
-    val amber = Color.rgb(244, 183, 64)
-    val record = Color.rgb(232, 44, 36)
+    val background = Color.rgb(0, 0, 0)
+    val surface = Color.rgb(13, 13, 14)
+    val raised = Color.rgb(26, 26, 28)
+    val line = Color.rgb(42, 42, 45)
+    val text = Color.rgb(196, 192, 183)
+    val muted = Color.rgb(122, 120, 113)
+    val faint = Color.rgb(78, 76, 72)
+    val signal = Color.rgb(214, 82, 38)
+    val amber = Color.rgb(206, 154, 56)
+    val record = Color.rgb(206, 40, 32)
 }
 
 object Type {
@@ -90,4 +91,16 @@ fun View.pressDims() {
         }
         false
     }
+}
+
+/** A small dark message over the current screen, replacing the system's theme-following toast. */
+fun Activity.notice(message: String, long: Boolean = false) {
+    val host = findViewById<ViewGroup>(android.R.id.content) ?: return
+    val pill = text(message, 13f, Palette.text, Type.body, Gravity.CENTER).apply {
+        background = rounded(Palette.raised, dpf(18), Palette.line, dp(1))
+        setPadding(dp(16), dp(10), dp(16), dp(10))
+    }
+    val params = frameParams(WRAP, WRAP, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(150) }
+    host.addView(pill, params)
+    pill.postDelayed({ host.removeView(pill) }, if (long) 3500L else 1800L)
 }
