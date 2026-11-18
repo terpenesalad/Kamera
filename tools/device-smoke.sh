@@ -102,7 +102,7 @@ tap $(( W - $(dp 23) )) "$(dp 66)"; sleep 12; shot 33-after-save
 
 adb logcat -d > "$OUT/logcat.txt"
 note "app log"
-grep -E " [IWE] Kamera| [EF] (AndroidRuntime|CameraDevice|MediaCodec|MediaMuxer|AudioRecord|BufferQueue|ImageReader|GLConsumer|SurfaceTexture)|GLConsumer|Shader compile|Program link" "$OUT/logcat.txt" | grep -v "Can.t dequeue" | cut -c1-260 | tail -80
+grep -E " [IWE] Kamera| [EF] (AndroidRuntime|CameraDevice|MediaCodec|MediaMuxer|AudioRecord|BufferQueue|ImageReader|GLConsumer|SurfaceTexture)|GLConsumer|ANR in|Shader compile|Program link" "$OUT/logcat.txt" | grep -v "Can.t dequeue" | cut -c1-260 | tail -80
 if grep -q "FATAL EXCEPTION" "$OUT/logcat.txt"; then
   fail "the app crashed"
   grep -A25 "FATAL EXCEPTION" "$OUT/logcat.txt" | cut -c1-240 | head -70

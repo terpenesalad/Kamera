@@ -72,6 +72,8 @@ class ViewfinderRenderer(private val context: Context, private val callbacks: Ca
     private var histogramTarget: RenderTarget? = null
     private val histogramPixels = ByteBuffer.allocateDirect(HIST_W * HIST_H * 4).order(ByteOrder.nativeOrder())
     private var frameCount = 0L
+    private var pendingFrames = 0
+    private var drawQueued = false
 
     private var recorder: VideoRecorder? = null
     private var encoderSurface: EGLSurface? = null
@@ -100,7 +102,7 @@ class ViewfinderRenderer(private val context: Context, private val callbacks: Ca
             engine = film
             oesTexture = GlTextures.createExternal()
             val texture = SurfaceTexture(oesTexture)
-            texture.setOnFrameAvailableListener({ drawFrame(newFrame = true) }, handler)
+            texture.setOnFrameAvailableListener({ onCameraFrame() }, handler)
             surfaceTexture = texture
             bakeQueue.request(stock, recipe.grade)
             val maxSize = film.maxTextureSize
@@ -203,6 +205,20 @@ class ViewfinderRenderer(private val context: Context, private val callbacks: Ca
         }
     }
 
+    /**
+     * Frames that arrive while one is being drawn are merged, so a GPU that can't keep up shows the
+     * newest picture at a lower rate instead of falling further and further behind.
+     */
+    private fun onCameraFrame() {
+        pendingFrames++
+        if (drawQueued) return
+        drawQueued = true
+        handler.post {
+            drawQueued = false
+            drawFrame(newFrame = true)
+        }
+    }
+
     private fun naturalAspect(): Float =
         if (sensorDegrees % 180 != 0) bufferHeight.toFloat() / bufferWidth else bufferWidth.toFloat() / bufferHeight
 
@@ -213,7 +229,10 @@ class ViewfinderRenderer(private val context: Context, private val callbacks: Ca
         val active = windowSurface ?: idleSurface ?: return
         try {
             core.makeCurrent(active)
-            if (newFrame) texture.updateTexImage()
+            if (newFrame) {
+                repeat(pendingFrames) { texture.updateTexImage() }
+                pendingFrames = 0
+            }
         } catch (e: RuntimeException) {
             Log.w(TAG, "Could not update the camera frame", e)
             return
