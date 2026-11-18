@@ -131,7 +131,7 @@ if os.path.exists(clip):
     problems += len(issues)
 
 print("\ndarkness on a phone set to light mode (mean brightness, 0-255)")
-checks = [("00-first-launch", 0.0, 0.07, 0.15, 0.85, 45), ("10-film-cabinet", 0.62, 0.95, 0.05, 0.95, 80), ("35-delete-dialog", 0.42, 0.56, 0.2, 0.8, 75)]
+checks = [("00-first-launch", 0.0, 0.07, 0.15, 0.85, 45), ("10-film-cabinet", 0.62, 0.95, 0.05, 0.95, 80), ("35-delete-dialog", 0.42, 0.56, 0.2, 0.8, 45)]
 for name, y0, y1, x0, x1, limit in checks:
     path = os.path.join(out, name + ".png")
     if not os.path.exists(path):

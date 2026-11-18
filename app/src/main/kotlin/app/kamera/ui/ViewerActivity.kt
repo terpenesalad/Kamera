@@ -2,7 +2,6 @@ package app.kamera.ui
 
 import android.annotation.SuppressLint
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -17,6 +16,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowInsets
 import android.widget.FrameLayout
 import android.widget.MediaController
@@ -163,19 +163,45 @@ class ViewerActivity : Activity() {
         startActivity(Intent(this, EditorActivity::class.java).putExtra(EditorActivity.EXTRA_ID, item.id))
     }
 
+    /** A confirmation drawn by the app itself, so it is as dark as everything else. */
     private fun confirmDelete() {
         val item = items.getOrNull(index) ?: return
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("Delete this frame?")
-            .setMessage("The picture and its negative will be removed from this device.")
-            .setNegativeButton("Keep", null)
-            .setPositiveButton("Delete") { _, _ ->
-                item.mediaUri?.takeIf { item.filmBaked || item.kind == MediaKind.PHOTO }?.let(kamera.mediaWriter::delete)
-                kamera.library.remove(item)
-                items = kamera.library.all()
-                if (items.isEmpty()) finish() else show(index.coerceAtMost(items.lastIndex))
-            }
-            .show()
+        val host = findViewById<ViewGroup>(android.R.id.content) ?: return
+        val overlay = FrameLayout(this).apply {
+            setBackgroundColor(0xD9000000.toInt())
+            isClickable = true
+        }
+        val panel = column().apply {
+            background = rounded(Palette.surface, dpf(16), Palette.line, dp(1))
+            setPadding(dp(20), dp(20), dp(20), dp(16))
+        }
+        panel.addView(text("Delete this frame?", 18f, Palette.text, Type.condensed))
+        panel.addView(
+            text("The picture and its negative will be removed from this device.", 13f, Palette.muted),
+            linearParams(MATCH, WRAP).apply {
+                topMargin = dp(8)
+                bottomMargin = dp(18)
+            },
+        )
+        val actions = row(Gravity.END)
+        actions.addView(
+            Chip(this, "Keep").apply { setOnClickListener { host.removeView(overlay) } },
+            linearParams(WRAP, WRAP).apply { marginEnd = dp(10) },
+        )
+        actions.addView(
+            Chip(this, "Delete").apply {
+                setOnClickListener {
+                    host.removeView(overlay)
+                    item.mediaUri?.takeIf { item.filmBaked || item.kind == MediaKind.PHOTO }?.let(kamera.mediaWriter::delete)
+                    kamera.library.remove(item)
+                    items = kamera.library.all()
+                    if (items.isEmpty()) finish() else show(index.coerceAtMost(items.lastIndex))
+                }
+            },
+        )
+        panel.addView(actions, linearParams(MATCH, WRAP))
+        overlay.addView(panel, frameParams(dp(300), WRAP, Gravity.CENTER))
+        host.addView(overlay, frameParams(MATCH, MATCH))
     }
 
     companion object {
