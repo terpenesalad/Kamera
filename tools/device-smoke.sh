@@ -19,7 +19,10 @@ adb shell pm grant $PKG android.permission.RECORD_AUDIO
 adb shell settings put global window_animation_scale 0
 adb shell settings put global transition_animation_scale 0
 adb shell settings put global animator_duration_scale 0
+adb shell settings put global hide_error_dialogs 1
+adb logcat -G 16M
 adb logcat -c
+sleep 30
 
 SIZE=$(adb shell wm size | tail -1 | awk '{print $3}' | tr -d '\r')
 W=${SIZE%x*}; H=${SIZE#*x}
@@ -109,6 +112,10 @@ tap $(( W - $(dp 23) )) "$(dp 66)"; sleep 25; shot 33-after-save; expect ViewerA
 adb logcat -d > "$OUT/logcat.txt"
 note "app log"
 grep -E " [IWE] Kamera| [EF] (AndroidRuntime|CameraDevice|MediaCodec|MediaMuxer|AudioRecord|BufferQueue|ImageReader|GLConsumer|SurfaceTexture)|GLConsumer|ANR in|Shader compile|Program link" "$OUT/logcat.txt" | grep -v "Can.t dequeue" | cut -c1-260 | tail -80
+if grep -q "ANR in $PKG" "$OUT/logcat.txt"; then
+  fail "the app stopped responding"
+  grep -A12 "ANR in $PKG" "$OUT/logcat.txt" | cut -c1-240 | head -40
+fi
 if grep -q "FATAL EXCEPTION" "$OUT/logcat.txt"; then
   fail "the app crashed"
   grep -A25 "FATAL EXCEPTION" "$OUT/logcat.txt" | cut -c1-240 | head -70
