@@ -40,7 +40,7 @@ for name in ["00-first-launch", "10-film-cabinet", "20-video-mode", "30-gallery"
 video = os.path.join(out, "20-video-mode.png")
 if os.path.exists(video):
     dp = density / 160
-    pixel = np.asarray(Image.open(video).convert("RGB"))[int(height - 100 * dp), width // 2]
+    pixel = np.asarray(Image.open(video).convert("RGB"))[int(height - 78 * dp), width // 2]
     print("shutter colour in video mode:", pixel.tolist())
 
 print("\nviewfinder against final photo (mean sRGB, 0-255)")

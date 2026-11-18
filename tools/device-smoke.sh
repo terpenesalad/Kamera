@@ -72,7 +72,7 @@ tap $(( W / 2 )) "$(dp 64)"; sleep 3; shot 10-film-cabinet
 adb shell input keyevent KEYCODE_BACK; sleep 2
 
 note "video"
-tap $(( W / 2 + $(dp 40) )) $(( H - $(dp 175) )); sleep 8; shot 20-video-mode
+tap $(( W / 2 + $(dp 34) )) $(( H - $(dp 134) )); sleep 8; shot 20-video-mode
 BEFORE=$(adb shell "ls /sdcard/DCIM/Kamera 2>/dev/null | wc -l" | tr -d '\r')
 adb shell input keyevent KEYCODE_VOLUME_UP; sleep 10; shot 21-recording
 adb shell input keyevent KEYCODE_VOLUME_UP
@@ -92,7 +92,7 @@ tap $(( W - $(dp 23) )) "$(dp 66)"; sleep 12; shot 33-after-save
 
 adb logcat -d > "$OUT/logcat.txt"
 note "app log"
-grep -E " [IWE] Kamera| [EF] (AndroidRuntime|CameraDevice|Camera3|MediaCodec|MediaMuxer|AudioRecord|OpenGLRenderer|EGL|BufferQueue|ImageReader)|Shader compile|Program link" "$OUT/logcat.txt" | cut -c1-240 | tail -70
+grep -E " [IWE] Kamera| [EF] (AndroidRuntime|CameraDevice|MediaCodec|MediaMuxer|AudioRecord|BufferQueue|ImageReader|GLConsumer|SurfaceTexture)|GLConsumer|Shader compile|Program link" "$OUT/logcat.txt" | grep -v "Can.t dequeue" | cut -c1-260 | tail -80
 if grep -q "FATAL EXCEPTION" "$OUT/logcat.txt"; then
   fail "the app crashed"
   grep -A25 "FATAL EXCEPTION" "$OUT/logcat.txt" | cut -c1-240 | head -70

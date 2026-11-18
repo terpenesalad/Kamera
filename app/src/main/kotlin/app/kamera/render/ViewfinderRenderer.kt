@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
 import android.os.SystemClock
+import android.util.Log
 import android.view.Surface
 import app.kamera.film.Affine
 import app.kamera.film.FilmCatalog
@@ -71,6 +72,7 @@ class ViewfinderRenderer(private val context: Context, private val callbacks: Ca
     private var histogramTarget: RenderTarget? = null
     private val histogramPixels = ByteBuffer.allocateDirect(HIST_W * HIST_H * 4).order(ByteOrder.nativeOrder())
     private var frameCount = 0L
+    private var liveFrames = 0L
 
     private var recorder: VideoRecorder? = null
     private var encoderSurface: EGLSurface? = null
@@ -214,12 +216,16 @@ class ViewfinderRenderer(private val context: Context, private val callbacks: Ca
             core.makeCurrent(active)
             if (newFrame) texture.updateTexImage()
         } catch (e: RuntimeException) {
+            Log.w(TAG, "Could not update the camera frame", e)
             return
         }
         if (!film.isReady) return
         texture.getTransformMatrix(transform)
         val textureMap = Affine.fromMat4(transform)
         advanceGrain()
+        if (newFrame && liveFrames++ % 240L == 0L) {
+            Log.i(TAG, "Live frame $liveFrames ${bufferWidth}x$bufferHeight map=$textureMap window=${windowWidth}x$windowHeight err=${GLES30.glGetError()}")
+        }
 
         recorder?.let { active2 -> if (newFrame) drawToEncoder(core, film, textureMap, active2, texture.timestamp) }
 
@@ -293,6 +299,10 @@ class ViewfinderRenderer(private val context: Context, private val callbacks: Ca
         histogramPixels.position(0)
         GLES30.glReadPixels(0, 0, HIST_W, HIST_H, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, histogramPixels)
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
+        if (frameCount % 240L == 1L) {
+            val r = histogramPixels.get(HIST_W * HIST_H * 2).toInt() and 0xFF
+            Log.i(TAG, "Developed centre value $r glError=${GLES30.glGetError()}")
+        }
         val bins = FloatArray(HIST_BINS)
         for (i in 0 until HIST_W * HIST_H) {
             val r = histogramPixels.get(i * 4).toInt() and 0xFF
@@ -331,6 +341,7 @@ class ViewfinderRenderer(private val context: Context, private val callbacks: Ca
     }
 
     private companion object {
+        const val TAG = "KameraViewfinder"
         const val HIST_W = 96
         const val HIST_H = 64
         const val HIST_BINS = 64
