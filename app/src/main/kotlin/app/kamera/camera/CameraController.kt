@@ -616,7 +616,10 @@ class CameraController(context: Context, private val listener: Listener) {
         pendingImage?.close()
         pendingImage = null
         pendingResult = null
-        if (!success) listener.onStillFailed()
+        if (!success) {
+            Log.w(TAG, "Still capture failed")
+            listener.onStillFailed()
+        }
         sendTrigger { it.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_CANCEL) }
         pushRepeating()
     }

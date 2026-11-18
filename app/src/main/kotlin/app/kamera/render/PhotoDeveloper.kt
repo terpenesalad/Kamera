@@ -93,6 +93,7 @@ class PhotoDeveloper(
     }
 
     private fun developCaptureInternal(still: StillCapture, recipe: Recipe): LibraryItem {
+        val startedMs = android.os.SystemClock.elapsedRealtime()
         val film = gl()
         val luma = GlTextures.create2D(GLES30.GL_LINEAR, GLES30.GL_CLAMP_TO_EDGE)
         GLES30.glPixelStorei(GLES30.GL_UNPACK_ALIGNMENT, 1)
@@ -126,6 +127,7 @@ class PhotoDeveloper(
             val developed = developTexture(film, negative.texture, negW, negH, flippedV = false, recipe)
             val item = publish(placeholder, developed, recipe, created, still.meta, existing = null)
             developed.recycle()
+            Log.i(TAG, "Developed ${item.width}x${item.height} on ${recipe.stockId} in ${android.os.SystemClock.elapsedRealtime() - startedMs} ms")
             return item
         } finally {
             negative.release()

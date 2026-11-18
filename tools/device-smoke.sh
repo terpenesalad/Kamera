@@ -28,6 +28,21 @@ dp() { echo $(( $1 * DENSITY / 160 )); }
 tap() { adb shell input tap "$1" "$2"; }
 note "screen ${W}x${H} density $DENSITY"
 
+# Waits for a new file in the Kamera folder; software GL on the emulator develops slowly.
+wait_for_new() {
+  local before=$1 count waited=0
+  while [ $waited -lt 180 ]; do
+    count=$(adb shell "ls /sdcard/DCIM/Kamera 2>/dev/null | wc -l" | tr -d '\r')
+    if [ "${count:-0}" -gt "$before" ]; then
+      echo "new file after ${waited}s"
+      sleep 4
+      return 0
+    fi
+    sleep 3; waited=$((waited + 3))
+  done
+  return 1
+}
+
 launch() { adb shell am start -W -n $PKG/.ui.CameraActivity >/dev/null; }
 set_prefs() {
   adb shell am force-stop $PKG
@@ -47,9 +62,7 @@ for STOCK in aura400 silver400 nocturne800t chroma50; do
   set_prefs "$STOCK"; launch; sleep 12
   shot "vf-$STOCK"
   adb shell input keyevent KEYCODE_VOLUME_UP
-  sleep 14
-  AFTER=$(adb shell "ls /sdcard/DCIM/Kamera 2>/dev/null | wc -l" | tr -d '\r')
-  if [ "${AFTER:-0}" -le "${BEFORE:-0}" ]; then fail "no photo saved on $STOCK"; fi
+  wait_for_new "${BEFORE:-0}" || fail "no photo saved on $STOCK"
   NEWEST=$(adb shell "ls -t /sdcard/DCIM/Kamera | head -1" | tr -d '\r')
   [ -n "$NEWEST" ] && adb pull "/sdcard/DCIM/Kamera/$NEWEST" "$OUT/photo-$STOCK.jpg" >/dev/null
 done
@@ -60,8 +73,10 @@ adb shell input keyevent KEYCODE_BACK; sleep 2
 
 note "video"
 tap $(( W / 2 + $(dp 40) )) $(( H - $(dp 175) )); sleep 8; shot 20-video-mode
-adb shell input keyevent KEYCODE_VOLUME_UP; sleep 7; shot 21-recording
-adb shell input keyevent KEYCODE_VOLUME_UP; sleep 8
+BEFORE=$(adb shell "ls /sdcard/DCIM/Kamera 2>/dev/null | wc -l" | tr -d '\r')
+adb shell input keyevent KEYCODE_VOLUME_UP; sleep 10; shot 21-recording
+adb shell input keyevent KEYCODE_VOLUME_UP
+wait_for_new "${BEFORE:-0}" || true
 if adb shell "ls /sdcard/DCIM/Kamera" | grep -q '\.mp4'; then
   CLIP=$(adb shell "ls -t /sdcard/DCIM/Kamera | grep mp4 | head -1" | tr -d '\r')
   adb pull "/sdcard/DCIM/Kamera/$CLIP" "$OUT/clip.mp4" >/dev/null
@@ -76,11 +91,14 @@ tap $(( W / 2 )) $(( H - $(dp 58) )); sleep 8; shot 32-darkroom
 tap $(( W - $(dp 23) )) "$(dp 66)"; sleep 12; shot 33-after-save
 
 adb logcat -d > "$OUT/logcat.txt"
-note "app problems in logcat"
-grep -E "FATAL EXCEPTION|AndroidRuntime|Shader compile|Program link|Kamera(Camera|Darkroom|Recorder|Export)|glError|GL_INVALID" "$OUT/logcat.txt" | cut -c1-260 | head -60
+note "app log"
+grep -E " [IWE] Kamera| [EF] (AndroidRuntime|CameraDevice|Camera3|MediaCodec|MediaMuxer|AudioRecord|OpenGLRenderer|EGL|BufferQueue|ImageReader)|Shader compile|Program link" "$OUT/logcat.txt" | cut -c1-240 | tail -70
 if grep -q "FATAL EXCEPTION" "$OUT/logcat.txt"; then
   fail "the app crashed"
   grep -A25 "FATAL EXCEPTION" "$OUT/logcat.txt" | cut -c1-240 | head -70
 fi
+
+python3 -m pip install --quiet --break-system-packages pillow numpy 2>/dev/null || python3 -m pip install --quiet pillow numpy
+python3 tools/smoke_report.py "$OUT" "$W" "$H" "$DENSITY" || fail "picture checks failed"
 ls -la "$OUT"
 exit $FAILED
