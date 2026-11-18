@@ -72,7 +72,6 @@ class ViewfinderRenderer(private val context: Context, private val callbacks: Ca
     private var histogramTarget: RenderTarget? = null
     private val histogramPixels = ByteBuffer.allocateDirect(HIST_W * HIST_H * 4).order(ByteOrder.nativeOrder())
     private var frameCount = 0L
-    private var liveFrames = 0L
 
     private var recorder: VideoRecorder? = null
     private var encoderSurface: EGLSurface? = null
@@ -223,11 +222,10 @@ class ViewfinderRenderer(private val context: Context, private val callbacks: Ca
         texture.getTransformMatrix(transform)
         val textureMap = Affine.fromMat4(transform)
         advanceGrain()
-        if (newFrame && liveFrames++ % 240L == 0L) {
-            Log.i(TAG, "Live frame $liveFrames ${bufferWidth}x$bufferHeight map=$textureMap window=${windowWidth}x$windowHeight err=${GLES30.glGetError()}")
-        }
 
-        recorder?.let { active2 -> if (newFrame) drawToEncoder(core, film, textureMap, active2, texture.timestamp) }
+        val frame = film.resolveExternal(oesTexture, bufferWidth, bufferHeight)
+
+        recorder?.let { active2 -> if (newFrame) drawToEncoder(core, film, frame, textureMap, active2, texture.timestamp) }
 
         val window = windowSurface ?: return
         core.makeCurrent(window)
@@ -238,7 +236,7 @@ class ViewfinderRenderer(private val context: Context, private val callbacks: Ca
         val aspect = if (portrait) 1f / frameAspect else frameAspect
         val (w, h) = FrameGeometry.fit(windowWidth, windowHeight, aspect)
         val matrix = textureMap * FrameGeometry.frameToSource(naturalAspect(), aspect, Framing(quarterTurns = displayTurns))
-        val source = SourceFrame(oesTexture, true, bufferWidth, bufferHeight, matrix)
+        val source = SourceFrame(frame, bufferWidth, bufferHeight, matrix)
         val uniforms = FilmUniforms.compute(stock, recipe, w, h)
         film.updateGlow(viewGlow, source, uniforms, aspect)
         film.drawFilm(
@@ -256,7 +254,7 @@ class ViewfinderRenderer(private val context: Context, private val callbacks: Ca
         core.swapBuffers(window)
     }
 
-    private fun drawToEncoder(core: EglCore, film: FilmEngine, textureMap: Affine, active: VideoRecorder, timestampNs: Long) {
+    private fun drawToEncoder(core: EglCore, film: FilmEngine, frame: Int, textureMap: Affine, active: VideoRecorder, timestampNs: Long) {
         val surface = encoderSurface ?: return
         val width = active.width
         val height = active.height
@@ -267,7 +265,7 @@ class ViewfinderRenderer(private val context: Context, private val callbacks: Ca
             Framing(quarterTurns = displayTurns + recordTurns),
         )
         core.makeCurrent(surface)
-        val source = SourceFrame(oesTexture, true, bufferWidth, bufferHeight, matrix)
+        val source = SourceFrame(frame, bufferWidth, bufferHeight, matrix)
         val uniforms = FilmUniforms.compute(stock, recipe, width, height)
         film.updateGlow(recordGlow, source, uniforms, aspect)
         film.drawFilm(source, recordGlow, uniforms, OutputTarget(0, 0, 0, width, height), grainX, grainY)
@@ -299,10 +297,6 @@ class ViewfinderRenderer(private val context: Context, private val callbacks: Ca
         histogramPixels.position(0)
         GLES30.glReadPixels(0, 0, HIST_W, HIST_H, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, histogramPixels)
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
-        if (frameCount % 240L == 1L) {
-            val r = histogramPixels.get(HIST_W * HIST_H * 2).toInt() and 0xFF
-            Log.i(TAG, "Developed centre value $r glError=${GLES30.glGetError()}")
-        }
         val bins = FloatArray(HIST_BINS)
         for (i in 0 until HIST_W * HIST_H) {
             val r = histogramPixels.get(i * 4).toInt() and 0xFF

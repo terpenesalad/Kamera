@@ -17,7 +17,6 @@ import kotlin.math.roundToInt
 /** A picture to develop: a texture plus the map from output-frame UV to texture UV. */
 class SourceFrame(
     val texture: Int,
-    val external: Boolean,
     val width: Int,
     val height: Int,
     val matrix: Affine,
@@ -95,6 +94,8 @@ class FilmEngine(assets: AssetManager) {
     private val grainTexture: Int
     private val lutTexture: Int
     private var lutLoaded = false
+    private var resolveTarget: RenderTarget? = null
+    private val resolveProgram: GlProgram by lazy { library.buildExternalResolve() }
 
     val maxTextureSize: Int
 
@@ -160,8 +161,31 @@ class FilmEngine(assets: AssetManager) {
         lutLoaded = true
     }
 
-    private fun program(fragment: String, external: Boolean, viewfinder: Boolean = false): GlProgram =
-        programs.getOrPut("$fragment/$external/$viewfinder") { library.build(fragment, external, viewfinder) }
+    private fun program(fragment: String, viewfinder: Boolean = false): GlProgram =
+        programs.getOrPut("$fragment/$viewfinder") { library.build(fragment, viewfinder) }
+
+    /**
+     * Copies an external camera or video frame into a regular texture, keeping its buffer layout,
+     * so the rest of the pipeline treats every source the same way.
+     */
+    fun resolveExternal(externalTexture: Int, width: Int, height: Int): Int {
+        val current = resolveTarget
+        val target = if (current != null && current.width == width && current.height == height) {
+            current
+        } else {
+            current?.release()
+            RenderTarget(width, height).also { resolveTarget = it }
+        }
+        resolveProgram.use()
+        GLES30.glBindVertexArray(vertexArray)
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, target.framebuffer)
+        GLES30.glViewport(0, 0, width, height)
+        GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
+        GLES30.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, externalTexture)
+        resolveProgram.set1i("uFrame", 0)
+        drawQuad()
+        return target.texture
+    }
 
     private fun begin(program: GlProgram, target: RenderTarget, matrix: Affine = Affine.IDENTITY) {
         program.use()
@@ -170,11 +194,6 @@ class FilmEngine(assets: AssetManager) {
         GLES30.glViewport(0, 0, target.width, target.height)
         program.setMat4("uSourceMatrix", matrix.toMat4())
         program.set1f("uFlipY", 1f)
-    }
-
-    private fun bindSource(unit: Int, source: SourceFrame) {
-        GLES30.glActiveTexture(GLES30.GL_TEXTURE0 + unit)
-        GLES30.glBindTexture(if (source.external) GLES11Ext.GL_TEXTURE_EXTERNAL_OES else GLES30.GL_TEXTURE_2D, source.texture)
     }
 
     private fun bind2D(unit: Int, texture: Int) {
@@ -189,9 +208,9 @@ class FilmEngine(assets: AssetManager) {
         val sourceShort = max(min(source.width, source.height), GlowChain.NEAR_SHORT_EDGE)
         glow.ensure(sourceShort, frameAspect)
 
-        val pre = program("glow_prefilter.frag", source.external)
+        val pre = program("glow_prefilter.frag")
         begin(pre, glow.levels[0], source.matrix)
-        bindSource(0, source)
+        bind2D(0, source.texture)
         pre.set1i("uSource", 0)
         pre.set3f("uInputGain", u.inputGain)
         val ratio = sourceShort.toFloat() / glow.firstLevelShortEdge
@@ -207,7 +226,7 @@ class FilmEngine(assets: AssetManager) {
     }
 
     private fun downsample(from: RenderTarget, to: RenderTarget) {
-        val p = program("glow_downsample.frag", false)
+        val p = program("glow_downsample.frag")
         begin(p, to)
         bind2D(0, from.texture)
         p.set1i("uInput", 0)
@@ -217,7 +236,7 @@ class FilmEngine(assets: AssetManager) {
     }
 
     private fun blur(source: RenderTarget, a: RenderTarget, b: RenderTarget, sigma: Float) {
-        val p = program("glow_blur.frag", false)
+        val p = program("glow_blur.frag")
         begin(p, a)
         bind2D(0, source.texture)
         p.set1i("uInput", 0)
@@ -244,7 +263,7 @@ class FilmEngine(assets: AssetManager) {
         zebra: Boolean = false,
         peaking: Boolean = false,
     ) {
-        val p = program("film.frag", source.external, viewfinder)
+        val p = program("film.frag", viewfinder)
         p.use()
         GLES30.glBindVertexArray(vertexArray)
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, target.framebuffer)
@@ -252,7 +271,7 @@ class FilmEngine(assets: AssetManager) {
         p.setMat4("uSourceMatrix", source.matrix.toMat4())
         p.set1f("uFlipY", if (target.flipY) -1f else 1f)
 
-        bindSource(0, source)
+        bind2D(0, source.texture)
         GLES30.glActiveTexture(GLES30.GL_TEXTURE1)
         GLES30.glBindTexture(GLES30.GL_TEXTURE_3D, lutTexture)
         bind2D(2, grainTexture)
@@ -290,21 +309,21 @@ class FilmEngine(assets: AssetManager) {
 
     /** Shows the unprocessed source, used by the editor's before/after comparison. */
     fun drawOriginal(source: SourceFrame, target: OutputTarget) {
-        val p = program("passthrough.frag", source.external)
+        val p = program("passthrough.frag")
         p.use()
         GLES30.glBindVertexArray(vertexArray)
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, target.framebuffer)
         GLES30.glViewport(target.x, target.y, target.width, target.height)
         p.setMat4("uSourceMatrix", source.matrix.toMat4())
         p.set1f("uFlipY", if (target.flipY) -1f else 1f)
-        bindSource(0, source)
+        bind2D(0, source.texture)
         p.set1i("uSource", 0)
         drawQuad()
     }
 
     /** Converts tightly packed YUV planes into an sRGB [target], mapped through [matrix]. */
     fun drawYuv(lumaTexture: Int, chromaTexture: Int, matrix: Affine, target: RenderTarget) {
-        val p = program("yuv_to_rgb.frag", false)
+        val p = program("yuv_to_rgb.frag")
         begin(p, target, matrix)
         bind2D(0, lumaTexture)
         bind2D(1, chromaTexture)
@@ -323,6 +342,8 @@ class FilmEngine(assets: AssetManager) {
     fun release() {
         programs.values.forEach(GlProgram::release)
         programs.clear()
+        resolveTarget?.release()
+        resolveTarget = null
         GlTextures.delete(grainTexture)
         GlTextures.delete(lutTexture)
         GLES30.glDeleteBuffers(1, intArrayOf(vertexBuffer), 0)

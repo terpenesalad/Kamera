@@ -43,6 +43,16 @@ wait_for_new() {
   return 1
 }
 
+# Taps the on-screen element with this exact text, wherever the layout has put it.
+tap_text() {
+  adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+  local bounds
+  bounds=$(adb shell cat /sdcard/ui.xml | tr '>' '\n' | grep "text=\"$1\"" | head -1 | sed -E 's/.*bounds="\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]".*/\1 \2 \3 \4/')
+  [ -z "$bounds" ] && { fail "could not find \"$1\" on screen"; return 1; }
+  set -- $bounds
+  tap $(( ($1 + $3) / 2 )) $(( ($2 + $4) / 2 ))
+}
+
 launch() { adb shell am start -W -n $PKG/.ui.CameraActivity >/dev/null; }
 set_prefs() {
   adb shell am force-stop $PKG
@@ -72,7 +82,7 @@ tap $(( W / 2 )) "$(dp 64)"; sleep 3; shot 10-film-cabinet
 adb shell input keyevent KEYCODE_BACK; sleep 2
 
 note "video"
-tap $(( W / 2 + $(dp 34) )) $(( H - $(dp 134) )); sleep 8; shot 20-video-mode
+tap_text VIDEO; sleep 8; shot 20-video-mode
 BEFORE=$(adb shell "ls /sdcard/DCIM/Kamera 2>/dev/null | wc -l" | tr -d '\r')
 adb shell input keyevent KEYCODE_VOLUME_UP; sleep 10; shot 21-recording
 adb shell input keyevent KEYCODE_VOLUME_UP

@@ -195,7 +195,8 @@ class VideoTranscoder(
                         texture.getTransformMatrix(transform)
                         val map = Affine.fromMat4(transform) *
                             FrameGeometry.frameToSource(displayW.toFloat() / displayH, outW.toFloat() / outH, recipe.framing)
-                        val frame = SourceFrame(oes, true, displayW, displayH, map)
+                        val resolved = film.resolveExternal(oes, codedW, codedH)
+                        val frame = SourceFrame(resolved, codedW, codedH, map)
                         film.updateGlow(glow, frame, uniforms, outW.toFloat() / outH)
                         grainState = grainState * 1103515245 + 12345
                         val gx = ((grainState ushr 8) and 0xFFF) / 4096f

@@ -204,7 +204,7 @@ class PhotoDeveloper(
         val (outW, outH) = FrameGeometry.outputSize(width, height, recipe.framing)
         val aspect = outW.toFloat() / outH
         val map = FrameGeometry.frameToSource(width.toFloat() / height, aspect, recipe.framing)
-        val source = SourceFrame(texture, false, width, height, if (flippedV) Affine.FLIP_V * map else map)
+        val source = SourceFrame(texture, width, height, if (flippedV) Affine.FLIP_V * map else map)
         val uniforms = FilmUniforms.compute(stock, recipe, outW, outH)
         film.updateGlow(glow, source, uniforms, aspect)
         val target = RenderTarget(outW, outH)
@@ -219,7 +219,7 @@ class PhotoDeveloper(
     private fun readTexture(film: FilmEngine, source: RenderTarget): Bitmap {
         val flipped = RenderTarget(source.width, source.height)
         film.drawOriginal(
-            SourceFrame(source.texture, false, source.width, source.height, Affine.IDENTITY),
+            SourceFrame(source.texture, source.width, source.height, Affine.IDENTITY),
             OutputTarget(flipped.framebuffer, 0, 0, source.width, source.height, flipY = true),
         )
         val bitmap = readPixels(flipped.framebuffer, source.width, source.height)

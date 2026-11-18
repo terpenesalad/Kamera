@@ -5,7 +5,7 @@ import android.opengl.GLES11Ext
 import android.opengl.GLES30
 
 /** A linked shader program with cached uniform locations. */
-class GlProgram(vertexSource: String, fragmentSource: String) {
+class GlProgram(vertexSource: String, fragmentSource: String, positionAttribute: String? = null) {
     val id: Int = GLES30.glCreateProgram()
     private val locations = HashMap<String, Int>()
 
@@ -14,6 +14,7 @@ class GlProgram(vertexSource: String, fragmentSource: String) {
         val fragment = compile(GLES30.GL_FRAGMENT_SHADER, fragmentSource)
         GLES30.glAttachShader(id, vertex)
         GLES30.glAttachShader(id, fragment)
+        positionAttribute?.let { GLES30.glBindAttribLocation(id, 0, it) }
         GLES30.glLinkProgram(id)
         val status = IntArray(1)
         GLES30.glGetProgramiv(id, GLES30.GL_LINK_STATUS, status, 0)
@@ -53,14 +54,11 @@ class ShaderLibrary(private val assets: AssetManager) {
         assets.open("shaders/$name").bufferedReader().use { it.readText() }
     }
 
-    fun build(fragment: String, external: Boolean, viewfinder: Boolean): GlProgram {
+    fun build(fragment: String, viewfinder: Boolean): GlProgram {
         val vertexHeader = "#version 300 es\nprecision highp float;\nprecision highp int;\n"
         val fragmentHeader = buildString {
-            append("#version 300 es\n")
-            if (external) append("#extension GL_OES_EGL_image_external_essl3 : require\n")
-            append("precision highp float;\nprecision highp int;\n")
-            append("#define SOURCE_SAMPLER highp ")
-            append(if (external) "samplerExternalOES\n" else "sampler2D\n")
+            append("#version 300 es\nprecision highp float;\nprecision highp int;\n")
+            append("#define SOURCE_SAMPLER highp sampler2D\n")
             if (viewfinder) append("#define VIEWFINDER 1\n")
         }
         return GlProgram(
@@ -68,6 +66,31 @@ class ShaderLibrary(private val assets: AssetManager) {
             fragmentHeader + read("common.glsl") + read(fragment),
         )
     }
+
+    /**
+     * Copies a camera or decoder frame into an ordinary texture. Written in GLSL ES 1.00 because
+     * the base external-image extension is the one every Android GPU driver supports.
+     */
+    fun buildExternalResolve(): GlProgram = GlProgram(
+        """
+        attribute vec2 aPosition;
+        varying vec2 vUv;
+        void main() {
+            vUv = aPosition * 0.5 + 0.5;
+            gl_Position = vec4(aPosition, 0.0, 1.0);
+        }
+        """.trimIndent(),
+        """
+        #extension GL_OES_EGL_image_external : require
+        precision highp float;
+        uniform samplerExternalOES uFrame;
+        varying vec2 vUv;
+        void main() {
+            gl_FragColor = vec4(texture2D(uFrame, vUv).rgb, 1.0);
+        }
+        """.trimIndent(),
+        positionAttribute = "aPosition",
+    )
 }
 
 /** An RGBA8 texture with a framebuffer attached. */

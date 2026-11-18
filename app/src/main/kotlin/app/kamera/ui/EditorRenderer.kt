@@ -162,7 +162,8 @@ class EditorRenderer(private val context: Context) {
         val (w, h) = FrameGeometry.fit(windowWidth, windowHeight, aspect)
         val map = FrameGeometry.frameToSource(sourceAspect, aspect, recipe.framing)
         val matrix = if (external) Affine.fromMat4(transform) * map else Affine.FLIP_V * map
-        val source = SourceFrame(texture, external, sourceWidth, sourceHeight, matrix)
+        val picture = if (external) film.resolveExternal(texture, sourceWidth, sourceHeight) else texture
+        val source = SourceFrame(picture, sourceWidth, sourceHeight, matrix)
         val output = OutputTarget(0, (windowWidth - w) / 2, (windowHeight - h) / 2, w, h)
         if (showOriginal) {
             film.drawOriginal(source, output)
