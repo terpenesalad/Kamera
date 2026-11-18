@@ -95,10 +95,16 @@ else
 fi
 
 note "gallery, viewer and darkroom"
-tap "$(dp 52)" $(( H - $(dp 88) )); sleep 5; shot 30-gallery
-tap $(( W / 6 )) "$(dp 200)"; sleep 5; shot 31-viewer
-tap $(( W / 2 )) $(( H - $(dp 58) )); sleep 8; shot 32-darkroom
-tap $(( W - $(dp 23) )) "$(dp 66)"; sleep 12; shot 33-after-save
+top() { adb shell dumpsys activity activities | grep -m1 -E "topResumedActivity|mResumedActivity" | sed -E 's/.*(app\.kamera[^ ]*).*/\1/' | cut -c1-90; }
+expect() {
+  local where; where=$(top); echo "on screen: $where"
+  case "$where" in *"$1"*) ;; *) fail "expected $1 but found $where" ;; esac
+}
+tap "$(dp 52)" $(( H - $(dp 88) )); sleep 8; shot 30-gallery; expect GalleryActivity
+tap $(( W / 2 )) "$(dp 200)"; sleep 10; shot 31-viewer; expect ViewerActivity
+tap $(( W / 2 )) $(( H - $(dp 58) )); sleep 15; shot 32-darkroom; expect EditorActivity
+tap_text LIGHT; sleep 4; shot 34-darkroom-light
+tap $(( W - $(dp 23) )) "$(dp 66)"; sleep 25; shot 33-after-save; expect ViewerActivity
 
 adb logcat -d > "$OUT/logcat.txt"
 note "app log"
