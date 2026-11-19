@@ -142,7 +142,7 @@ if grep -q "ANR in $PKG" "$OUT/logcat.txt"; then
   fail "the app stopped responding"
   grep -A12 "ANR in $PKG" "$OUT/logcat.txt" | cut -c1-240 | head -40
 fi
-if grep -q "FATAL EXCEPTION" "$OUT/logcat.txt"; then
+if grep -A3 "FATAL EXCEPTION" "$OUT/logcat.txt" | grep -q "Process: $PKG"; then
   fail "the app crashed"
   grep -A25 "FATAL EXCEPTION" "$OUT/logcat.txt" | cut -c1-240 | head -70
 fi
