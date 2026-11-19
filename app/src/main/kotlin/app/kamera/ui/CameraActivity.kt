@@ -269,6 +269,7 @@ class CameraActivity : Activity(), CameraController.Listener, ViewfinderRenderer
         setPadding(dp(6), 0, dp(6), 0)
         flashButton = GlyphButton(this@CameraActivity, Glyph.FLASH_OFF)
         flashButton.setOnClickListener { cycleFlash() }
+        flashButton.contentDescription = "Flash"
         addView(flashButton, linearParams(dp(44), dp(44)))
         formatLabel = text("3:2", 13f, Palette.text, Type.mono, Gravity.CENTER)
         formatLabel.setOnClickListener { cycleFormat() }
@@ -289,9 +290,11 @@ class CameraActivity : Activity(), CameraController.Listener, ViewfinderRenderer
 
         filterButton = GlyphButton(this@CameraActivity, Glyph.FILTER)
         filterButton.setOnClickListener { showFilterHolder() }
+        filterButton.contentDescription = "Filters"
         addView(filterButton, linearParams(dp(58), dp(44)))
         val settingsButton = GlyphButton(this@CameraActivity, Glyph.SETTINGS)
         settingsButton.setOnClickListener { showSettings() }
+        settingsButton.contentDescription = "Settings"
         addView(settingsButton, linearParams(dp(44), dp(44)))
     }
 
@@ -321,13 +324,16 @@ class CameraActivity : Activity(), CameraController.Listener, ViewfinderRenderer
             clipToOutline = true
             pressDims()
             setOnClickListener { startActivity(Intent(this@CameraActivity, GalleryActivity::class.java)) }
+            contentDescription = "Gallery"
         }
         addView(galleryButton, frameParams(dp(52), dp(52), Gravity.CENTER_VERTICAL or Gravity.START).apply { marginStart = dp(26) })
         shutter = ShutterButton(this@CameraActivity)
         shutter.setOnClickListener { pressShutter() }
+        shutter.contentDescription = "Shutter"
         addView(shutter, frameParams(dp(78), dp(78), Gravity.CENTER))
         flipButton = GlyphButton(this@CameraActivity, Glyph.FLIP)
         flipButton.setOnClickListener { flipCamera() }
+        flipButton.contentDescription = "Switch camera"
         addView(flipButton, frameParams(dp(52), dp(52), Gravity.CENTER_VERTICAL or Gravity.END).apply { marginEnd = dp(26) })
     }
 

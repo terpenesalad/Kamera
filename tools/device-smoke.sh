@@ -52,13 +52,17 @@ wait_for_new() {
 tap_text() {
   adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
   local bounds
-  bounds=$(adb shell cat /sdcard/ui.xml | tr '>' '\n' | grep "text=\"$1\"" | head -1 | sed -E 's/.*bounds="\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]".*/\1 \2 \3 \4/')
+  bounds=$(adb shell cat /sdcard/ui.xml | tr '>' '\n' | grep -E "(text|content-desc)=\"$1\"" | head -1 | sed -E 's/.*bounds="\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]".*/\1 \2 \3 \4/')
   [ -z "$bounds" ] && { fail "could not find \"$1\" on screen"; return 1; }
   set -- $bounds
   tap $(( ($1 + $3) / 2 )) $(( ($2 + $4) / 2 ))
 }
 
 top() { adb shell dumpsys activity activities | grep -m1 -E "topResumedActivity|mResumedActivity" | sed -E 's/.*(app\.kamera[^ ]*).*/\1/' | cut -c1-90; }
+expect() {
+  local where; where=$(top); echo "on screen: $where"
+  case "$where" in *"$1"*) ;; *) fail "expected $1 but found $where" ;; esac
+}
 launch() { adb shell am start -W -n $PKG/.ui.CameraActivity >/dev/null; }
 set_prefs() {
   adb shell am force-stop $PKG
@@ -95,7 +99,7 @@ adb shell input keyevent KEYCODE_VOLUME_UP
 wait_for_new "${BEFORE:-0}" || fail "no photo saved through filters"
 NEWEST=$(adb shell "ls -t /sdcard/DCIM/Kamera | head -1" | tr -d '\r')
 [ -n "$NEWEST" ] && adb pull "/sdcard/DCIM/Kamera/$NEWEST" "$OUT/photo-filtered.jpg" >/dev/null
-tap $(( W / 2 + $(dp 87) )) "$(dp 26)"; sleep 3; shot 11-filter-holder
+tap_text Filters; sleep 3; shot 11-filter-holder; expect CameraActivity
 adb shell input keyevent KEYCODE_BACK; sleep 2
 
 note "film cabinet and settings"
@@ -116,11 +120,7 @@ else
 fi
 
 note "gallery, viewer and darkroom"
-expect() {
-  local where; where=$(top); echo "on screen: $where"
-  case "$where" in *"$1"*) ;; *) fail "expected $1 but found $where" ;; esac
-}
-tap "$(dp 52)" $(( H - $(dp 88) )); sleep 8; shot 30-gallery; expect GalleryActivity
+tap_text Gallery; sleep 8; shot 30-gallery; expect GalleryActivity
 tap $(( W / 2 )) "$(dp 200)"; sleep 10; shot 31-viewer; expect ViewerActivity
 tap $(( W * 5 / 6 )) $(( H - $(dp 58) )); sleep 4; shot 35-delete-dialog
 tap_text Keep; sleep 3
