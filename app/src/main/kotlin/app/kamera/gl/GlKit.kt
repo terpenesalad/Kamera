@@ -31,6 +31,7 @@ class GlProgram(vertexSource: String, fragmentSource: String, positionAttribute:
     fun set1f(name: String, v: Float) = GLES30.glUniform1f(location(name), v)
     fun set2f(name: String, x: Float, y: Float) = GLES30.glUniform2f(location(name), x, y)
     fun set3f(name: String, v: FloatArray) = GLES30.glUniform3f(location(name), v[0], v[1], v[2])
+    fun set4f(name: String, x: Float, y: Float, z: Float, w: Float) = GLES30.glUniform4f(location(name), x, y, z, w)
     fun setMat4(name: String, m: FloatArray) = GLES30.glUniformMatrix4fv(location(name), 1, false, m, 0)
 
     fun release() = GLES30.glDeleteProgram(id)
@@ -54,12 +55,13 @@ class ShaderLibrary(private val assets: AssetManager) {
         assets.open("shaders/$name").bufferedReader().use { it.readText() }
     }
 
-    fun build(fragment: String, viewfinder: Boolean): GlProgram {
+    fun build(fragment: String, viewfinder: Boolean, logGlow: Boolean = false): GlProgram {
         val vertexHeader = "#version 300 es\nprecision highp float;\nprecision highp int;\n"
         val fragmentHeader = buildString {
             append("#version 300 es\nprecision highp float;\nprecision highp int;\n")
             append("#define SOURCE_SAMPLER highp sampler2D\n")
             if (viewfinder) append("#define VIEWFINDER 1\n")
+            if (logGlow) append("#define LOG_GLOW 1\n")
         }
         return GlProgram(
             vertexHeader + read("fullscreen.vert"),

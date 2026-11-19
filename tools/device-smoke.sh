@@ -64,7 +64,7 @@ set_prefs() {
   adb shell "mkdir -p /data/data/$PKG/shared_prefs"
   adb shell "cat > /data/data/$PKG/shared_prefs/kamera.xml" <<XML
 <?xml version='1.0' encoding='utf-8' standalone='yes' ?>
-<map><string name="stock">$1</string><boolean name="histogram" value="true" /></map>
+<map><string name="stock">$1</string><string name="filters">${2:-}</string><boolean name="histogram" value="true" /></map>
 XML
   adb shell "chown \$(stat -c %u:%g /data/data/$PKG) /data/data/$PKG/shared_prefs/kamera.xml"
   adb shell "restorecon -R /data/data/$PKG/shared_prefs" 2>/dev/null
@@ -81,6 +81,20 @@ for STOCK in aura400 silver400 nocturne800t chroma50; do
   NEWEST=$(adb shell "ls -t /sdcard/DCIM/Kamera | head -1" | tr -d '\r')
   [ -n "$NEWEST" ] && adb pull "/sdcard/DCIM/Kamera/$NEWEST" "$OUT/photo-$STOCK.jpg" >/dev/null
 done
+
+note "shooting through a filter holder (81B, tobacco grad, star 4)"
+BEFORE=$(adb shell "ls /sdcard/DCIM/Kamera 2>/dev/null | wc -l" | tr -d '\r')
+set_prefs aura400 "filterColor=w81b
+filterGrad=tobacco2
+filterGradPosition=0.1
+filterEffect=star4"
+launch; sleep 12; shot vf-filtered
+adb shell input keyevent KEYCODE_VOLUME_UP
+wait_for_new "${BEFORE:-0}" || fail "no photo saved through filters"
+NEWEST=$(adb shell "ls -t /sdcard/DCIM/Kamera | head -1" | tr -d '\r')
+[ -n "$NEWEST" ] && adb pull "/sdcard/DCIM/Kamera/$NEWEST" "$OUT/photo-filtered.jpg" >/dev/null
+tap $(( W / 2 + $(dp 87) )) "$(dp 26)"; sleep 3; shot 11-filter-holder
+adb shell input keyevent KEYCODE_BACK; sleep 2
 
 note "film cabinet and settings"
 tap $(( W / 2 )) "$(dp 64)"; sleep 3; shot 10-film-cabinet

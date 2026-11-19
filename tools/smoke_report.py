@@ -64,6 +64,12 @@ for photo_path in sorted(glob.glob(os.path.join(out, "photo-*.jpg"))):
     a = np.asarray(Image.fromarray(view.astype(np.uint8)).resize(small, Image.BOX), dtype=np.float32)
     b = np.asarray(photo.resize(small, Image.BOX), dtype=np.float32)
     delta = np.abs(a.mean(axis=(0, 1)) - b.mean(axis=(0, 1)))
+    # Top and bottom thirds separately, so a grad on the wrong side would show up.
+    top = np.abs(a[:16].mean(axis=(0, 1)) - b[:16].mean(axis=(0, 1))).max()
+    bottom = np.abs(a[-16:].mean(axis=(0, 1)) - b[-16:].mean(axis=(0, 1))).max()
+    print(f"{stock:14s} top-third delta {top:.1f}  bottom-third delta {bottom:.1f}  top/bottom brightness view {a[:16].mean():.0f}/{a[-16:].mean():.0f} photo {b[:16].mean():.0f}/{b[-16:].mean():.0f}")
+    if top > 25 or bottom > 25:
+        problems += 1
     print(
         f"{stock:14s} frame {right - left}x{bottom - top} photo {photo.width}x{photo.height} "
         f"view {np.round(a.mean(axis=(0, 1)), 1).tolist()} photo {np.round(b.mean(axis=(0, 1)), 1).tolist()} "

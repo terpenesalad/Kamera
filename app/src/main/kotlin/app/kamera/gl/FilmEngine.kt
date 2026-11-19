@@ -10,9 +10,11 @@ import app.kamera.film.GrainTile
 import app.kamera.film.LutBaker
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 /** A picture to develop: a texture plus the map from output-frame UV to texture UV. */
 class SourceFrame(
@@ -42,6 +44,10 @@ class GlowBuffers {
     internal lateinit var farSource: RenderTarget
     internal lateinit var farA: RenderTarget
     internal lateinit var farB: RenderTarget
+    internal lateinit var diffuseSource: RenderTarget
+    internal lateinit var diffuseA: RenderTarget
+    internal lateinit var diffuseB: RenderTarget
+    internal lateinit var star: RenderTarget
     internal var firstLevelShortEdge = GlowChain.NEAR_SHORT_EDGE
 
     internal fun ensure(sourceShortEdge: Int, frameAspect: Float) {
@@ -71,12 +77,16 @@ class GlowBuffers {
         farSource = target(GlowChain.FAR_SHORT_EDGE)
         farA = target(GlowChain.FAR_SHORT_EDGE)
         farB = target(GlowChain.FAR_SHORT_EDGE)
+        diffuseSource = target(GlowChain.DIFFUSE_SHORT_EDGE)
+        diffuseA = target(GlowChain.DIFFUSE_SHORT_EDGE)
+        diffuseB = target(GlowChain.DIFFUSE_SHORT_EDGE)
+        star = target(GlowChain.NEAR_SHORT_EDGE)
     }
 
     fun release() {
         if (key.isEmpty()) return
         levels.forEach(RenderTarget::release)
-        listOf(nearA, nearB, mid, farSource, farA, farB).forEach(RenderTarget::release)
+        listOf(nearA, nearB, mid, farSource, farA, farB, diffuseSource, diffuseA, diffuseB, star).forEach(RenderTarget::release)
         levels = emptyList()
         key = ""
     }
@@ -161,8 +171,23 @@ class FilmEngine(assets: AssetManager) {
         lutLoaded = true
     }
 
-    private fun program(fragment: String, viewfinder: Boolean = false): GlProgram =
-        programs.getOrPut("$fragment/$viewfinder") { library.build(fragment, viewfinder) }
+    private fun program(fragment: String, viewfinder: Boolean = false, logGlow: Boolean = false): GlProgram =
+        programs.getOrPut("$fragment/$viewfinder/$logGlow") { library.build(fragment, viewfinder, logGlow) }
+
+    /**
+     * Sets the holder's grad and polariser. [upDegrees] turns the filters with the camera, so a grad
+     * stays on the sky however the phone is held.
+     */
+    private fun setLensUniforms(p: GlProgram, u: FilmUniforms, frameAspect: Float, upDegrees: Int) {
+        val angle = Math.toRadians((upDegrees + u.gradTilt).toDouble())
+        p.set3f("uGradTint", u.gradTint)
+        p.set1f("uGradStrength", u.gradStrength)
+        p.set2f("uGradDir", (-sin(angle)).toFloat(), cos(angle).toFloat())
+        p.set1f("uGradPos", u.gradPosition)
+        p.set1f("uGradSoft", u.gradSoftness)
+        p.set2f("uFrameAspect", frameAspect, 1f)
+        p.set1f("uPolariser", u.polariser)
+    }
 
     /**
      * Copies an external camera or video frame into a regular texture, keeping its buffer layout,
@@ -204,29 +229,59 @@ class FilmEngine(assets: AssetManager) {
     private fun drawQuad() = GLES30.glDrawArrays(GLES30.GL_TRIANGLE_STRIP, 0, 4)
 
     /** Renders the scattered-light buffers for [source] as seen through the output frame. */
-    fun updateGlow(glow: GlowBuffers, source: SourceFrame, u: FilmUniforms, frameAspect: Float) {
+    fun updateGlow(glow: GlowBuffers, source: SourceFrame, u: FilmUniforms, frameAspect: Float, upDegrees: Int = 0) {
         val sourceShort = max(min(source.width, source.height), GlowChain.NEAR_SHORT_EDGE)
         glow.ensure(sourceShort, frameAspect)
 
-        val pre = program("glow_prefilter.frag")
-        begin(pre, glow.levels[0], source.matrix)
-        bind2D(0, source.texture)
-        pre.set1i("uSource", 0)
-        pre.set3f("uInputGain", u.inputGain)
-        val ratio = sourceShort.toFloat() / glow.firstLevelShortEdge
-        pre.set2f("uSrcTexel", ratio * 0.5f / source.width, ratio * 0.5f / source.height)
-        drawQuad()
+        fun prefilter(logGlow: Boolean) {
+            val pre = program("glow_prefilter.frag", logGlow = logGlow)
+            begin(pre, glow.levels[0], source.matrix)
+            bind2D(0, source.texture)
+            pre.set1i("uSource", 0)
+            pre.set3f("uInputGain", u.inputGain)
+            setLensUniforms(pre, u, frameAspect, upDegrees)
+            val ratio = sourceShort.toFloat() / glow.firstLevelShortEdge
+            pre.set2f("uSrcTexel", ratio * 0.5f / source.width, ratio * 0.5f / source.height)
+            drawQuad()
+            for (i in 1 until glow.levels.size) downsample(glow.levels[i - 1], glow.levels[i], logGlow)
+        }
 
-        for (i in 1 until glow.levels.size) downsample(glow.levels[i - 1], glow.levels[i])
+        if (u.diffusion > 0f) {
+            prefilter(logGlow = true)
+            downsample(glow.levels.last(), glow.diffuseSource, logGlow = true)
+            blur(glow.diffuseSource, glow.diffuseA, glow.diffuseB, u.diffusionSigmaTexels, logGlow = true)
+        }
+
+        prefilter(logGlow = false)
         val nearSource = glow.levels.last()
         blur(nearSource, glow.nearA, glow.nearB, u.nearSigmaTexels)
         downsample(nearSource, glow.mid)
         downsample(glow.mid, glow.farSource)
         blur(glow.farSource, glow.farA, glow.farB, u.farSigmaTexels)
+
+        if (u.starPoints > 0 && u.starStrength > 0f) {
+            val p = program("star.frag")
+            begin(p, glow.star)
+            bind2D(0, nearSource.texture)
+            p.set1i("uInput", 0)
+            p.set2f("uTexel", 1f / nearSource.width, 1f / nearSource.height)
+            val axes = FloatArray(8)
+            val count = (u.starPoints / 2).coerceIn(1, 4)
+            for (k in 0 until count) {
+                val angle = Math.toRadians(upDegrees + k * 360.0 / u.starPoints)
+                axes[k * 2] = cos(angle).toFloat()
+                axes[k * 2 + 1] = sin(angle).toFloat()
+            }
+            p.set4f("uAxesA", axes[0], axes[1], axes[2], axes[3])
+            p.set4f("uAxesB", axes[4], axes[5], axes[6], axes[7])
+            p.set1f("uAxisCount", count.toFloat())
+            p.set1f("uDecay", max(u.starDecayTexels, 1f))
+            drawQuad()
+        }
     }
 
-    private fun downsample(from: RenderTarget, to: RenderTarget) {
-        val p = program("glow_downsample.frag")
+    private fun downsample(from: RenderTarget, to: RenderTarget, logGlow: Boolean = false) {
+        val p = program("glow_downsample.frag", logGlow = logGlow)
         begin(p, to)
         bind2D(0, from.texture)
         p.set1i("uInput", 0)
@@ -235,8 +290,8 @@ class FilmEngine(assets: AssetManager) {
         drawQuad()
     }
 
-    private fun blur(source: RenderTarget, a: RenderTarget, b: RenderTarget, sigma: Float) {
-        val p = program("glow_blur.frag")
+    private fun blur(source: RenderTarget, a: RenderTarget, b: RenderTarget, sigma: Float, logGlow: Boolean = false) {
+        val p = program("glow_blur.frag", logGlow = logGlow)
         begin(p, a)
         bind2D(0, source.texture)
         p.set1i("uInput", 0)
@@ -262,6 +317,7 @@ class FilmEngine(assets: AssetManager) {
         viewfinder: Boolean = false,
         zebra: Boolean = false,
         peaking: Boolean = false,
+        upDegrees: Int = 0,
     ) {
         val p = program("film.frag", viewfinder)
         p.use()
@@ -282,6 +338,15 @@ class FilmEngine(assets: AssetManager) {
         p.set1i("uGrain", 2)
         p.set1i("uGlowNear", 3)
         p.set1i("uGlowFar", 4)
+        bind2D(5, if (u.diffusion > 0f) glow.diffuseB.texture else glow.nearB.texture)
+        bind2D(6, if (u.starStrength > 0f && u.starPoints > 0) glow.star.texture else glow.nearB.texture)
+        p.set1i("uDiffuse", 5)
+        p.set1i("uStar", 6)
+        setLensUniforms(p, u, target.width.toFloat() / target.height, upDegrees)
+        p.set1f("uDiffusion", u.diffusion)
+        p.set1f("uDiffusionSpot", u.diffusionSpot)
+        p.set1f("uPastel", u.pastel)
+        p.set1f("uStarStrength", if (u.starPoints > 0) u.starStrength else 0f)
 
         p.set3f("uInputGain", u.inputGain)
         p.set1f("uLutSize", LutBaker.SIZE.toFloat())

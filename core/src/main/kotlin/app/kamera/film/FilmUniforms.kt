@@ -14,6 +14,9 @@ object GlowChain {
     /** Short edge of the buffer that carries wide bloom. */
     const val FAR_SHORT_EDGE = 90
 
+    /** Short edge of the buffer that carries light scattered by diffusion filters. */
+    const val DIFFUSE_SHORT_EDGE = 135
+
     /** Largest blur sigma, in buffer texels, the kernel in `glow_blur.frag` can represent. */
     const val MAX_SIGMA_TEXELS = 5f
 }
@@ -43,6 +46,19 @@ class FilmUniforms(
     val acutance: Float,
     val acutanceRadius: Float,
     val clarity: Float,
+    val gradTint: FloatArray,
+    val gradStrength: Float,
+    val gradPosition: Float,
+    val gradSoftness: Float,
+    val gradTilt: Float,
+    val polariser: Float,
+    val diffusion: Float,
+    val diffusionSigmaTexels: Float,
+    val diffusionSpot: Float,
+    val pastel: Float,
+    val starPoints: Int,
+    val starDecayTexels: Float,
+    val starStrength: Float,
 ) {
     companion object {
         /** Physical size of the frame's short edge, in micrometres (a 35 mm still frame). */
@@ -104,11 +120,26 @@ class FilmUniforms(
             val reversal = stock.chemistry.process == FilmProcess.REVERSAL
             val densitySlope = gamma * LOG10_2 / if (reversal) -1.2f else 0.8f
 
+            // Lens filters. A colour filter is metered through, as a camera's light meter would.
+            val lens = recipe.filters
+            val colour = FilterCatalog.find(lens.colorId)?.takeIf { it.slot == FilterSlot.COLOUR }
+            val filterGain = floatArrayOf(1f, 1f, 1f)
+            if (colour != null && !colour.polariser) {
+                val s = lens.colorStrength.coerceIn(0f, 1.5f)
+                val t = floatArrayOf(colour.transmission.r.pow(s), colour.transmission.g.pow(s), colour.transmission.b.pow(s))
+                val m = stock.sensitivity
+                val metered = if (stock.isMonochrome) m[0] * t[0] + m[1] * t[1] + m[2] * t[2] else FilmMath.luma(t[0], t[1], t[2])
+                for (i in 0 until 3) filterGain[i] = t[i] / max(metered, 1e-3f)
+            }
+            val grad = FilterCatalog.find(lens.gradId)?.takeIf { it.slot == FilterSlot.GRAD }
+            val effect = FilterCatalog.find(lens.effectId)?.takeIf { it.slot == FilterSlot.EFFECT }
+            val effectStrength = if (effect == null) 0f else lens.effectStrength.coerceIn(0f, 1.5f)
+
             return FilmUniforms(
                 inputGain = floatArrayOf(
-                    exposureGain * balance[0],
-                    exposureGain * balance[1],
-                    exposureGain * balance[2],
+                    exposureGain * balance[0] * filterGain[0],
+                    exposureGain * balance[1] * filterGain[1],
+                    exposureGain * balance[2] * filterGain[2],
                 ),
                 grainAmount = grainStops * fx.grainAmount.coerceIn(0f, 3f) * pushGrain * footprintGain,
                 grainChroma = if (stock.isMonochrome) 0f else stock.grain.chroma,
@@ -132,6 +163,19 @@ class FilmUniforms(
                 acutance = fx.sharpen.coerceIn(0f, 1f) * 1.6f - stock.softness,
                 acutanceRadius = max(shortEdge / ACUTANCE_REFERENCE_EDGE, 1f),
                 clarity = fx.clarity.coerceIn(-1f, 1f),
+                gradTint = grad?.transmission?.toArray() ?: floatArrayOf(1f, 1f, 1f),
+                gradStrength = if (grad == null) 0f else lens.gradStrength.coerceIn(0f, 1.5f),
+                gradPosition = lens.gradPosition.coerceIn(-1f, 1f),
+                gradSoftness = lens.gradSoftness.coerceIn(0.02f, 1f),
+                gradTilt = lens.gradTilt.coerceIn(-45f, 45f),
+                polariser = if (colour?.polariser == true) lens.colorStrength.coerceIn(0f, 1.5f) else 0f,
+                diffusion = min((effect?.diffusion ?: 0f) * effectStrength, 0.9f),
+                diffusionSigmaTexels = min((effect?.diffusionRadius ?: 0f) * GlowChain.DIFFUSE_SHORT_EDGE, GlowChain.MAX_SIGMA_TEXELS),
+                diffusionSpot = if (effect?.centreSpot == true) 1f else 0f,
+                pastel = (effect?.pastel ?: 0f) * effectStrength,
+                starPoints = effect?.starPoints ?: 0,
+                starDecayTexels = (effect?.starLength ?: 0f) * GlowChain.NEAR_SHORT_EDGE,
+                starStrength = if ((effect?.starPoints ?: 0) > 0) effectStrength else 0f,
             )
         }
 

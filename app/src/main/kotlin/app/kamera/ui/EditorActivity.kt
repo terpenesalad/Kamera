@@ -114,7 +114,7 @@ class EditorActivity : Activity(), SurfaceHolder.Callback {
         content.addView(stage, linearParams(MATCH, 0, 1f))
 
         val tabs = ChipGroup(this).apply { setPadding(dp(12), dp(10), dp(12), dp(6)); clipToPadding = false }
-        val names = ArrayList(listOf("FILM", "LIGHT", "COLOUR", "EFFECTS", "CROP"))
+        val names = ArrayList(listOf("FILM", "FILTERS", "LIGHT", "COLOUR", "EFFECTS", "CROP"))
         if (isVideo) names.add("TRIM")
         tabs.setOptions(names, 0) { showTab(names[it]) }
         content.addView(tabs, linearParams(MATCH, WRAP))
@@ -255,6 +255,7 @@ class EditorActivity : Activity(), SurfaceHolder.Callback {
         panel.removeAllViews()
         when (name) {
             "FILM" -> buildFilmTab()
+            "FILTERS" -> panel.addView(FilterPanel(this, recipe.filters) { apply(recipe.copy(filters = it)) }, linearParams(MATCH, WRAP))
             "LIGHT" -> buildLightTab()
             "COLOUR" -> buildColourTab()
             "EFFECTS" -> buildEffectsTab()

@@ -21,6 +21,7 @@ async function pageMain(payload) {
   };
   const S = payload.shaders;
   const header = (defs) => `#version 300 es\nprecision highp float;\nprecision highp int;\n#define SOURCE_SAMPLER highp sampler2D\n${defs || ''}\n`;
+  const LOG = '#define LOG_GLOW 1';
   const program = (fragName, defs) => {
     const p = gl.createProgram();
     gl.attachShader(p, compile(gl.VERTEX_SHADER, header() + S['fullscreen.vert']));
@@ -32,6 +33,8 @@ async function pageMain(payload) {
   };
   const P = {
     pre: program('glow_prefilter.frag'), down: program('glow_downsample.frag'), blur: program('glow_blur.frag'),
+    preLog: program('glow_prefilter.frag', LOG), downLog: program('glow_downsample.frag', LOG), blurLog: program('glow_blur.frag', LOG),
+    star: program('star.frag'),
     film: program('film.frag'), vf: program('film.frag', '#define VIEWFINDER 1'), yuv: program('yuv_to_rgb.frag'),
   };
   const vbo = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
@@ -75,40 +78,72 @@ async function pageMain(payload) {
 
   const dims = (s, aspect) => (aspect >= 1 ? [Math.round(s * aspect), s] : [s, Math.round(s / aspect)]);
 
+  const lens = (prog, u, aspect, up) => {
+    const a = (up + u.gradTilt) * Math.PI / 180;
+    gl.uniform3fv(prog.u('uGradTint'), u.gradTint); gl.uniform1f(prog.u('uGradStrength'), u.gradStrength);
+    gl.uniform2f(prog.u('uGradDir'), -Math.sin(a), Math.cos(a)); gl.uniform1f(prog.u('uGradPos'), u.gradPos);
+    gl.uniform1f(prog.u('uGradSoft'), u.gradSoft); gl.uniform2f(prog.u('uFrameAspect'), aspect, 1); gl.uniform1f(prog.u('uPolariser'), u.polariser);
+  };
+
   function glow(src, sw, sh, u, outAspect) {
-    const short = Math.min(sw, sh); const NEAR = 270; const FAR = 90;
+    const short = Math.min(sw, sh); const NEAR = 270; const FAR = 90; const DIFF = 135;
     const levels = []; let s = short;
     while (Math.floor(s / 2) >= NEAR * 2) { s = Math.floor(s / 2); levels.push(s); }
     levels.push(NEAR);
     const rts = levels.map((l) => { const [w, h] = dims(l, outAspect); return target(w, h); });
-    begin(P.pre, rts[0], FLIPV); bindTex(0, gl.TEXTURE_2D, src); gl.uniform1i(P.pre.u('uSource'), 0);
-    gl.uniform3fv(P.pre.u('uInputGain'), u.gain);
-    const r0 = short / levels[0]; gl.uniform2f(P.pre.u('uSrcTexel'), r0 * 0.5 / sw, r0 * 0.5 / sh); draw();
-    const down = (from, to) => {
-      begin(P.down, to); bindTex(0, gl.TEXTURE_2D, from.t); gl.uniform1i(P.down.u('uInput'), 0);
-      const r = from.h / to.h; gl.uniform2f(P.down.u('uTexel'), r * 0.5 / from.w, r * 0.5 / from.h); draw();
+    const down = (from, to, log) => {
+      const p = log ? P.downLog : P.down;
+      begin(p, to); bindTex(0, gl.TEXTURE_2D, from.t); gl.uniform1i(p.u('uInput'), 0);
+      const r = from.h / to.h; gl.uniform2f(p.u('uTexel'), r * 0.5 / from.w, r * 0.5 / from.h); draw();
     };
-    for (let i = 1; i < rts.length; i++) down(rts[i - 1], rts[i]);
-    const nearSrc = rts[rts.length - 1];
-    const blur2 = (src2, sigma) => {
+    const blur2 = (src2, sigma, log) => {
+      const p = log ? P.blurLog : P.blur;
       const a = target(src2.w, src2.h); const b = target(src2.w, src2.h);
-      begin(P.blur, a); bindTex(0, gl.TEXTURE_2D, src2.t); gl.uniform1i(P.blur.u('uInput'), 0); gl.uniform1f(P.blur.u('uSigma'), sigma); gl.uniform2f(P.blur.u('uDirection'), 1 / src2.w, 0); draw();
-      begin(P.blur, b); bindTex(0, gl.TEXTURE_2D, a.t); gl.uniform1i(P.blur.u('uInput'), 0); gl.uniform1f(P.blur.u('uSigma'), sigma); gl.uniform2f(P.blur.u('uDirection'), 0, 1 / src2.h); draw();
+      begin(p, a); bindTex(0, gl.TEXTURE_2D, src2.t); gl.uniform1i(p.u('uInput'), 0); gl.uniform1f(p.u('uSigma'), sigma); gl.uniform2f(p.u('uDirection'), 1 / src2.w, 0); draw();
+      begin(p, b); bindTex(0, gl.TEXTURE_2D, a.t); gl.uniform1i(p.u('uInput'), 0); gl.uniform1f(p.u('uSigma'), sigma); gl.uniform2f(p.u('uDirection'), 0, 1 / src2.h); draw();
       return b;
     };
+    const prefilter = (log) => {
+      const p = log ? P.preLog : P.pre;
+      begin(p, rts[0], FLIPV); bindTex(0, gl.TEXTURE_2D, src); gl.uniform1i(p.u('uSource'), 0);
+      gl.uniform3fv(p.u('uInputGain'), u.gain); lens(p, u, outAspect, 0);
+      const r0 = short / levels[0]; gl.uniform2f(p.u('uSrcTexel'), r0 * 0.5 / sw, r0 * 0.5 / sh); draw();
+      for (let i = 1; i < rts.length; i++) down(rts[i - 1], rts[i], log);
+    };
+    let diffuse = null;
+    if (u.diffusion > 0) {
+      prefilter(true);
+      const [dw, dh] = dims(DIFF, outAspect); const ds = target(dw, dh); down(rts[rts.length - 1], ds, true);
+      diffuse = blur2(ds, u.diffusionSigma, true);
+    }
+    prefilter(false);
+    const nearSrc = rts[rts.length - 1];
     const near = blur2(nearSrc, u.nearSigma);
     const [mw, mh] = dims(135, outAspect); const mid = target(mw, mh); down(nearSrc, mid);
     const [fw, fh] = dims(FAR, outAspect); const farSrc = target(fw, fh); down(mid, farSrc);
     const far = blur2(farSrc, u.farSigma);
-    return { near, far };
+    let star = null;
+    if (u.starPoints > 0) {
+      star = target(nearSrc.w, nearSrc.h); const p = P.star; begin(p, star);
+      bindTex(0, gl.TEXTURE_2D, nearSrc.t); gl.uniform1i(p.u('uInput'), 0); gl.uniform2f(p.u('uTexel'), 1 / nearSrc.w, 1 / nearSrc.h);
+      const n = Math.min(4, Math.max(1, u.starPoints / 2)); const ax = new Array(8).fill(0);
+      for (let k = 0; k < n; k++) { const a = k * 2 * Math.PI / u.starPoints; ax[k * 2] = Math.cos(a); ax[k * 2 + 1] = Math.sin(a); }
+      gl.uniform4f(p.u('uAxesA'), ax[0], ax[1], ax[2], ax[3]); gl.uniform4f(p.u('uAxesB'), ax[4], ax[5], ax[6], ax[7]);
+      gl.uniform1f(p.u('uAxisCount'), n); gl.uniform1f(p.u('uDecay'), Math.max(u.starDecay, 1)); draw();
+    }
+    return { near, far, diffuse, star };
   }
 
   function renderFilm(job, srcTex, sw, sh) {
     const u = job.uniforms; const out = target(job.outW, job.outH);
-    const { near, far } = glow(srcTex, sw, sh, u, job.outW / job.outH);
+    const { near, far, diffuse, star } = glow(srcTex, sw, sh, u, job.outW / job.outH);
     const p = P.film; begin(p, out, FLIPV, -1);
-    bindTex(0, gl.TEXTURE_2D, srcTex); bindTex(1, gl.TEXTURE_3D, lutTexture(job.stock)); bindTex(2, gl.TEXTURE_2D, grain); bindTex(3, gl.TEXTURE_2D, near.t); bindTex(4, gl.TEXTURE_2D, far.t);
-    [['uSource', 0], ['uLut', 1], ['uGrain', 2], ['uGlowNear', 3], ['uGlowFar', 4]].forEach(([n, i]) => gl.uniform1i(p.u(n), i));
+    bindTex(0, gl.TEXTURE_2D, srcTex); bindTex(1, gl.TEXTURE_3D, lutTexture(job.lut)); bindTex(2, gl.TEXTURE_2D, grain); bindTex(3, gl.TEXTURE_2D, near.t); bindTex(4, gl.TEXTURE_2D, far.t);
+    bindTex(5, gl.TEXTURE_2D, (diffuse || near).t); bindTex(6, gl.TEXTURE_2D, (star || near).t);
+    [['uSource', 0], ['uLut', 1], ['uGrain', 2], ['uGlowNear', 3], ['uGlowFar', 4], ['uDiffuse', 5], ['uStar', 6]].forEach(([n, i]) => gl.uniform1i(p.u(n), i));
+    lens(p, u, job.outW / job.outH, 0);
+    gl.uniform1f(p.u('uDiffusion'), u.diffusion); gl.uniform1f(p.u('uDiffusionSpot'), u.diffusionSpot); gl.uniform1f(p.u('uPastel'), u.pastel);
+    gl.uniform1f(p.u('uStarStrength'), u.starPoints > 0 ? u.starStrength : 0);
     gl.uniform3fv(p.u('uInputGain'), u.gain); gl.uniform1f(p.u('uLutSize'), LUT_SIZE);
     gl.uniform1f(p.u('uGrainAmount'), job.noGrain ? 0 : u.grainAmount); gl.uniform1f(p.u('uGrainChroma'), u.grainChroma); gl.uniform2fv(p.u('uGrainDensity'), u.grainDensity);
     gl.uniform2fv(p.u('uGrainUvScale'), u.grainUvScale); gl.uniform2f(p.u('uGrainOffset'), job.seedX || 0, job.seedY || 0); gl.uniform1f(p.u('uGrainLod'), u.grainLod);
@@ -138,11 +173,14 @@ async function pageMain(payload) {
 (async () => {
   const spec = JSON.parse(fs.readFileSync(jobsFile, 'utf8'));
   const stocks = JSON.parse(fs.readFileSync(path.join(dataDir, 'stocks.json'), 'utf8'));
+  const filterFile = path.join(dataDir, 'filters.json');
+  if (fs.existsSync(filterFile)) Object.assign(stocks, JSON.parse(fs.readFileSync(filterFile, 'utf8')));
+  const lutOf = (key) => stocks[key].lut || key;
   const luts = {};
-  for (const id of new Set(spec.jobs.map((j) => j.stock))) luts[id] = fs.readFileSync(path.join(dataDir, `${id}.lut`)).toString('base64');
+  for (const id of new Set(spec.jobs.map((j) => lutOf(j.stock)))) luts[id] = fs.readFileSync(path.join(dataDir, `${id}.lut`)).toString('base64');
   const sources = {};
   for (const [k, v] of Object.entries(spec.sources)) sources[k] = { w: v.w, h: v.h, data: fs.readFileSync(v.file).toString('base64') };
-  const jobs = spec.jobs.map((j) => ({ ...j, uniforms: stocks[j.stock].sizes[j.size] }));
+  const jobs = spec.jobs.map((j) => ({ ...j, lut: lutOf(j.stock), uniforms: stocks[j.stock].sizes[j.size] }));
   const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   const page = await browser.newPage();
   page.on('pageerror', (e) => console.error('pageerror', e.message));

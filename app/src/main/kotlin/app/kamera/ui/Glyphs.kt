@@ -52,6 +52,9 @@ enum class Glyph(val build: Path.() -> Unit) {
         moveTo(12f, 3f); lineTo(12f, 15f); moveTo(7.5f, 10.5f); lineTo(12f, 15f); lineTo(16.5f, 10.5f)
         moveTo(5f, 20f); lineTo(19f, 20f)
     }),
+    FILTER({
+        addRect(RectF(5f, 4f, 19f, 20f), Path.Direction.CW); moveTo(5f, 9f); lineTo(19f, 9f); moveTo(5f, 12.5f); lineTo(19f, 12.5f)
+    }),
     PLAY({ moveTo(8f, 5f); lineTo(19f, 12f); lineTo(8f, 19f); close() }),
     PAUSE({ moveTo(9f, 5f); lineTo(9f, 19f); moveTo(15f, 5f); lineTo(15f, 19f) }),
 }

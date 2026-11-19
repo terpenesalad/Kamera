@@ -49,6 +49,17 @@ temperature, tint, saturation, vibrance, seven-band colour mixer, split toning �
 vignette, clarity, sharpening · crop, straighten, rotate, mirror · video trim and grade · import from your
 gallery.
 
+**Filter holder:** load up to three square filters at once, in the style of the Cokin system, and see them
+live in the viewfinder:
+
+- *Colour:* 81A, 81B, 81C and 81EF warming, 85B amber, 82A and 82B cooling, 80A blue, sepia, a circular
+  polariser, and yellow, orange, red and green filters that change black-and-white tones as they do on real film
+- *Graduated:* grey ND2, ND4 and ND8 (hard and soft), tobacco, blue, sunset, mauve and emerald, with
+  adjustable position, softness and tilt
+- *Effect:* diffusers, mist, fog, centre spot, pastel and 4, 6 and 8-point stars
+
+Filters stay with each photo's recipe, so you can add, change or remove them later in the darkroom.
+
 **Always dark:** every screen stays dark, even if your phone is set to light mode.
 
 ## Privacy

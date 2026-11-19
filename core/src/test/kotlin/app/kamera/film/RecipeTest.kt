@@ -19,6 +19,7 @@ class RecipeTest {
             ),
             effects = Effects(exposure = 0.33f, grainAmount = 1.5f, clarity = -0.2f),
             framing = Framing(aspect = 1.5f, quarterTurns = 3, straighten = -2.5f, zoom = 1.4f, flipHorizontal = true),
+            filters = LensFilters(colorId = "polariser", gradId = "g2s", gradPosition = 0.2f, effectId = "mist"),
         )
         assertEquals(recipe, Recipe.decode(recipe.encode()))
     }

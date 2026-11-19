@@ -56,6 +56,7 @@ import app.kamera.film.FilmMath
 import app.kamera.film.FilmStock
 import app.kamera.film.FrameGeometry
 import app.kamera.film.Framing
+import app.kamera.film.LensFilters
 import app.kamera.film.PhotoFormat
 import app.kamera.film.Recipe
 import app.kamera.film.VideoFormat
@@ -89,6 +90,7 @@ class CameraActivity : Activity(), CameraController.Listener, ViewfinderRenderer
     private var kelvin: Int? = null
     private var push = 0f
     private var stock: FilmStock = FilmCatalog.default
+    private var filters = LensFilters()
     private var telemetry: Telemetry? = null
     private var deviceDegrees = 0
 
@@ -101,6 +103,7 @@ class CameraActivity : Activity(), CameraController.Listener, ViewfinderRenderer
     private lateinit var galleryButton: ImageView
     private lateinit var flipButton: GlyphButton
     private lateinit var flashButton: GlyphButton
+    private lateinit var filterButton: GlyphButton
     private lateinit var formatLabel: TextView
     private lateinit var stockLabel: TextView
     private lateinit var rollLabel: TextView
@@ -124,6 +127,7 @@ class CameraActivity : Activity(), CameraController.Listener, ViewfinderRenderer
                 val snapped = CaptureGeometry.snapDegrees(orientation)
                 if (snapped != deviceDegrees) {
                     deviceDegrees = snapped
+                    renderer.setDeviceDegrees(snapped)
                     rotateControls()
                 }
             }
@@ -157,6 +161,7 @@ class CameraActivity : Activity(), CameraController.Listener, ViewfinderRenderer
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.setDecorFitsSystemWindows(false)
         stock = FilmCatalog.find(settings.stockId)
+        filters = settings.lensFilters
         controller = CameraController(this, this)
         renderer = ViewfinderRenderer(this, this)
         buildInterface()
@@ -271,7 +276,10 @@ class CameraActivity : Activity(), CameraController.Listener, ViewfinderRenderer
 
         val film = column(Gravity.CENTER)
         stockLabel = text("", 15f, Palette.text, Type.condensed, Gravity.CENTER)
-        rollLabel = text("", 10f, Palette.muted, Type.mono, Gravity.CENTER)
+        rollLabel = text("", 10f, Palette.muted, Type.mono, Gravity.CENTER).apply {
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        }
         film.addView(stockLabel)
         film.addView(rollLabel)
         film.isClickable = true
@@ -279,7 +287,9 @@ class CameraActivity : Activity(), CameraController.Listener, ViewfinderRenderer
         film.setOnClickListener { showFilmCabinet() }
         addView(film, linearParams(0, MATCH, 1f))
 
-        addView(android.widget.Space(this@CameraActivity), linearParams(dp(58), dp(44)))
+        filterButton = GlyphButton(this@CameraActivity, Glyph.FILTER)
+        filterButton.setOnClickListener { showFilterHolder() }
+        addView(filterButton, linearParams(dp(58), dp(44)))
         val settingsButton = GlyphButton(this@CameraActivity, Glyph.SETTINGS)
         settingsButton.setOnClickListener { showSettings() }
         addView(settingsButton, linearParams(dp(44), dp(44)))
@@ -368,7 +378,7 @@ class CameraActivity : Activity(), CameraController.Listener, ViewfinderRenderer
 
     private fun rotateControls() {
         val target = -(if (deviceDegrees > 180) deviceDegrees - 360 else deviceDegrees).toFloat()
-        for (view in listOf(galleryButton, flipButton, flashButton, formatLabel)) {
+        for (view in listOf(galleryButton, flipButton, flashButton, formatLabel, filterButton)) {
             view.animate().rotation(target).setDuration(220).start()
         }
     }
@@ -446,6 +456,7 @@ class CameraActivity : Activity(), CameraController.Listener, ViewfinderRenderer
             grade = ColorGrade(push = push),
             effects = Effects(temperature = temperature),
             framing = Framing(aspect = settings.photoFormat.aspect),
+            filters = filters,
         )
     }
 
@@ -632,7 +643,9 @@ class CameraActivity : Activity(), CameraController.Listener, ViewfinderRenderer
             push < 0f -> "  PULL ${push.toInt()}"
             else -> ""
         }
-        rollLabel.text = "$frame/${Settings.ROLL_LENGTH}$pushText"
+        val filterText = if (filters.isEmpty) "" else "  ·  " + filters.names.joinToString(" + ")
+        rollLabel.text = "$frame/${Settings.ROLL_LENGTH}$pushText$filterText"
+        filterButton.active = !filters.isEmpty
     }
 
     private fun refreshLensRow() {
@@ -819,6 +832,17 @@ class CameraActivity : Activity(), CameraController.Listener, ViewfinderRenderer
         }
         body.addView(process, linearParams(MATCH, WRAP))
         openSheet("Film cabinet", body)
+    }
+
+    private fun showFilterHolder() {
+        val panel = FilterPanel(this, filters) { next ->
+            filters = next
+            settings.lensFilters = next
+            refreshFilmLabels()
+            applyLook()
+        }
+        val scroller = ScrollView(this).apply { addView(panel) }
+        openSheet("Filter holder", scroller.apply { layoutParams = linearParams(MATCH, dp(430)) })
     }
 
     private fun stockDetail(s: FilmStock) = "${s.character}\n${s.reference}"

@@ -6,6 +6,9 @@ import app.kamera.film.FilmUniforms
 import app.kamera.film.GrainTile
 import app.kamera.film.LutBaker
 import app.kamera.film.Recipe
+import app.kamera.film.FilterCatalog
+import app.kamera.film.FilterSlot
+import app.kamera.film.LensFilters
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -33,17 +36,48 @@ fun main(args: Array<String>) {
         if (index > 0) json.append(',')
         json.append("\"${stock.id}\":{\"name\":\"${stock.name}\",\"iso\":${stock.iso},\"rms\":${stock.grain.rmsGranularity},\"gamma\":${stock.chemistry.filmGamma},\"contrast\":$slope,\"sizes\":{")
         sizes.forEachIndexed { i, (w, h) ->
-            val u = FilmUniforms.compute(stock, Recipe(stock.id), w, h)
             if (i > 0) json.append(',')
-            json.append("\"${w}x$h\":{")
-            json.append("\"gain\":[${u.inputGain.joinToString(",")}],")
-            json.append("\"grainAmount\":${u.grainAmount},\"grainChroma\":${u.grainChroma},\"grainDensity\":[${u.grainDensityBase},${u.grainDensitySlope}],")
-            json.append("\"grainUvScale\":[${u.grainUvScaleX},${u.grainUvScaleY}],\"grainLod\":${u.grainLod},")
-            json.append("\"halation\":${u.halationAmount},\"halationTint\":[${u.halationTint.joinToString(",")}],")
-            json.append("\"bloom\":${u.bloomAmount},\"nearSigma\":${u.nearSigmaTexels},\"farSigma\":${u.farSigmaTexels},")
-            json.append("\"vignette\":${u.vignette},\"acutance\":${u.acutance},\"acutanceRadius\":${u.acutanceRadius},\"clarity\":${u.clarity}}")
+            json.append("\"${w}x$h\":").append(uniformJson(FilmUniforms.compute(stock, Recipe(stock.id), w, h)))
         }
         json.append("}}")
     }
     File(out, "stocks.json").writeText(json.append('}').toString())
+
+    // Every filter on a colour stock, and the black-and-white filters on a monochrome one.
+    val filters = StringBuilder("{")
+    var first = true
+    fun addFilter(stockId: String, holder: LensFilters, key: String) {
+        val stock = FilmCatalog.find(stockId)
+        if (!first) filters.append(',')
+        first = false
+        filters.append("\"$key\":{\"lut\":\"$stockId\",\"name\":\"$key\",\"sizes\":{")
+        sizes.forEachIndexed { i, (w, h) ->
+            if (i > 0) filters.append(',')
+            filters.append("\"${w}x$h\":").append(uniformJson(FilmUniforms.compute(stock, Recipe(stockId, filters = holder), w, h)))
+        }
+        filters.append("}}")
+    }
+    for (f in FilterCatalog.all) {
+        val holder = when (f.slot) {
+            FilterSlot.COLOUR -> LensFilters(colorId = f.id)
+            FilterSlot.GRAD -> LensFilters(gradId = f.id, gradPosition = 0.15f, gradSoftness = f.edge)
+            FilterSlot.EFFECT -> LensFilters(effectId = f.id)
+        }
+        addFilter("aura400", holder, "aura400|${f.id}")
+        if (f.id in listOf("yellow", "orange", "red", "green", "polariser")) addFilter("silver400", holder, "silver400|${f.id}")
+    }
+    File(out, "filters.json").writeText(filters.append('}').toString())
+}
+
+private fun uniformJson(u: FilmUniforms): String = buildString {
+    append("{\"gain\":[${u.inputGain.joinToString(",")}],")
+    append("\"grainAmount\":${u.grainAmount},\"grainChroma\":${u.grainChroma},\"grainDensity\":[${u.grainDensityBase},${u.grainDensitySlope}],")
+    append("\"grainUvScale\":[${u.grainUvScaleX},${u.grainUvScaleY}],\"grainLod\":${u.grainLod},")
+    append("\"halation\":${u.halationAmount},\"halationTint\":[${u.halationTint.joinToString(",")}],")
+    append("\"bloom\":${u.bloomAmount},\"nearSigma\":${u.nearSigmaTexels},\"farSigma\":${u.farSigmaTexels},")
+    append("\"vignette\":${u.vignette},\"acutance\":${u.acutance},\"acutanceRadius\":${u.acutanceRadius},\"clarity\":${u.clarity},")
+    append("\"gradTint\":[${u.gradTint.joinToString(",")}],\"gradStrength\":${u.gradStrength},\"gradPos\":${u.gradPosition},")
+    append("\"gradSoft\":${u.gradSoftness},\"gradTilt\":${u.gradTilt},\"polariser\":${u.polariser},")
+    append("\"diffusion\":${u.diffusion},\"diffusionSigma\":${u.diffusionSigmaTexels},\"diffusionSpot\":${u.diffusionSpot},\"pastel\":${u.pastel},")
+    append("\"starPoints\":${u.starPoints},\"starDecay\":${u.starDecayTexels},\"starStrength\":${u.starStrength}}")
 }

@@ -1,13 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- A lens: a white ring around a white centre, on black. Only the middle 66dp shows on a launcher. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path android:fillColor="#EEE9DD"
-        android:pathData="M54,28a26,26 0 1,0 0,52a26,26 0 1,0 0,-52zM54,33a21,21 0 1,1 0,42a21,21 0 1,1 0,-42z" />
-    <path android:fillColor="#F25C2A"
-        android:pathData="M54,42a12,12 0 1,0 0,24a12,12 0 1,0 0,-24z" />
-    <path android:fillColor="#EEE9DD"
-        android:pathData="M60,44.500a3,3 0 1,0 0,6a3,3 0 1,0 0,-6z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M54,30a24,24 0 1,0 0,48a24,24 0 1,0 0,-48zM54,34.5a19.5,19.5 0 1,0 0,39a19.5,19.5 0 1,0 0,-39z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,44a10,10 0 1,0 0,20a10,10 0 1,0 0,-20z" />
 </vector>

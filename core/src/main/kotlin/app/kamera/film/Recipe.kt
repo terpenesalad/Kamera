@@ -71,6 +71,7 @@ data class Recipe(
     val grade: ColorGrade = ColorGrade(),
     val effects: Effects = Effects(),
     val framing: Framing = Framing(),
+    val filters: LensFilters = LensFilters(),
 ) {
     /** Serialises to line-based `key=value` text; unknown keys are ignored when read back. */
     fun encode(): String = buildString {
@@ -111,6 +112,7 @@ data class Recipe(
         put("panX", framing.panX)
         put("panY", framing.panY)
         put("flipHorizontal", framing.flipHorizontal)
+        append(filters.encode())
     }
 
     companion object {
@@ -170,6 +172,7 @@ data class Recipe(
                     panY = f("panY", 0f),
                     flipHorizontal = map["flipHorizontal"]?.toBooleanStrictOrNull() ?: false,
                 ),
+                filters = LensFilters.fromMap(map),
             )
         }
     }

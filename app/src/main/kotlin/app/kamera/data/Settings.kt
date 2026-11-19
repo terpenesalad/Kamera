@@ -3,6 +3,7 @@ package app.kamera.data
 import android.content.Context
 import android.content.SharedPreferences
 import app.kamera.film.FilmCatalog
+import app.kamera.film.LensFilters
 import app.kamera.film.PhotoFormat
 import app.kamera.film.VideoFormat
 
@@ -30,6 +31,11 @@ class Settings(context: Context) {
     var videoFps: Int
         get() = prefs.getInt("videoFps", 24)
         set(value) = prefs.edit().putInt("videoFps", value).apply()
+
+    /** Filters loaded in the camera's holder. */
+    var lensFilters: LensFilters
+        get() = LensFilters.decode(prefs.getString("filters", ""))
+        set(value) = prefs.edit().putString("filters", value.encode()).apply()
 
     var showGrid: Boolean
         get() = prefs.getBoolean("grid", false)

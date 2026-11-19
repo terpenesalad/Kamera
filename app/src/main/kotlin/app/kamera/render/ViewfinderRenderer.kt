@@ -78,6 +78,7 @@ class ViewfinderRenderer(private val context: Context, private val callbacks: Ca
     private var recorder: VideoRecorder? = null
     private var encoderSurface: EGLSurface? = null
     private var recordTurns = 0
+    private var upDegrees = 0
 
     private var grainX = 0f
     private var grainY = 0f
@@ -182,6 +183,13 @@ class ViewfinderRenderer(private val context: Context, private val callbacks: Ca
         }
     }
 
+    /** How the phone is held, so grads and star filters stay aligned with the picture. */
+    fun setDeviceDegrees(degrees: Int) {
+        handler.post {
+            if (recorder == null) upDegrees = degrees
+        }
+    }
+
     fun startRecording(videoRecorder: VideoRecorder, deviceDegrees: Int) {
         handler.post {
             val core = egl ?: return@post
@@ -257,7 +265,7 @@ class ViewfinderRenderer(private val context: Context, private val callbacks: Ca
         val matrix = textureMap * FrameGeometry.frameToSource(naturalAspect(), aspect, Framing(quarterTurns = displayTurns))
         val source = SourceFrame(frame, bufferWidth, bufferHeight, matrix)
         val uniforms = FilmUniforms.compute(stock, recipe, w, h)
-        film.updateGlow(viewGlow, source, uniforms, aspect)
+        film.updateGlow(viewGlow, source, uniforms, aspect, upDegrees)
         film.drawFilm(
             source,
             viewGlow,
@@ -268,6 +276,7 @@ class ViewfinderRenderer(private val context: Context, private val callbacks: Ca
             viewfinder = true,
             zebra = zebra,
             peaking = peaking,
+            upDegrees = upDegrees,
         )
         if (histogramEnabled && newFrame && frameCount++ % HIST_INTERVAL == 0L) readHistogram(film, source, uniforms)
         core.swapBuffers(window)
@@ -312,7 +321,7 @@ class ViewfinderRenderer(private val context: Context, private val callbacks: Ca
 
     private fun readHistogram(film: FilmEngine, source: SourceFrame, uniforms: FilmUniforms) {
         val target = histogramTarget ?: RenderTarget(HIST_W, HIST_H).also { histogramTarget = it }
-        film.drawFilm(source, viewGlow, uniforms, OutputTarget(target.framebuffer, 0, 0, HIST_W, HIST_H))
+        film.drawFilm(source, viewGlow, uniforms, OutputTarget(target.framebuffer, 0, 0, HIST_W, HIST_H), upDegrees = upDegrees)
         histogramPixels.position(0)
         GLES30.glReadPixels(0, 0, HIST_W, HIST_H, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, histogramPixels)
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)

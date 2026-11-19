@@ -9,6 +9,8 @@ uniform highp sampler3D uLut;
 uniform highp sampler2D uGrain;
 uniform highp sampler2D uGlowNear;
 uniform highp sampler2D uGlowFar;
+uniform highp sampler2D uDiffuse;
+uniform highp sampler2D uStar;
 
 uniform vec3 uInputGain;
 uniform float uLutSize;
@@ -23,6 +25,11 @@ uniform float uGrainLod;
 uniform float uHalation;
 uniform vec3 uHalationTint;
 uniform float uBloom;
+
+uniform float uDiffusion;
+uniform float uDiffusionSpot;
+uniform float uPastel;
+uniform float uStarStrength;
 
 uniform float uVignette;
 uniform float uClarity;
@@ -58,7 +65,25 @@ void main() {
         display = clamp(display + (display - around * 0.25) * uAcutance, 0.0, 1.0);
     }
 
-    vec3 scene = displayToScene(display) * uInputGain;
+    vec3 scene = lensFilters(displayToScene(display) * uInputGain, vFrameUv);
+
+    // Diffusion filters scatter part of the light into a soft halo around everything.
+    if (uDiffusion > 0.0) {
+        vec3 scattered = logGlowDecode(texture(uDiffuse, vFrameUv).rgb);
+        float amount = uDiffusion;
+        if (uDiffusionSpot > 0.0) {
+            float r = length((vFrameUv - 0.5) * uFrameAspect);
+            amount *= smoothstep(0.2, 0.42, r);
+        }
+        scene = mix(scene, scattered, amount);
+        if (uPastel > 0.0) {
+            float l = dot(scene, LUMA);
+            scene = mix(scene, vec3(l), uPastel * 0.5) + uPastel * 0.03;
+        }
+    }
+    if (uStarStrength > 0.0) {
+        scene += glowDecode(texture(uStar, vFrameUv).rgb) * uStarStrength;
+    }
 
     // Halation and bloom are added as light, before the film responds to it.
     vec4 near = texture(uGlowNear, vFrameUv);
