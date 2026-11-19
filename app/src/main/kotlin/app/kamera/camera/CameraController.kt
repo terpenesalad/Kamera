@@ -669,6 +669,6 @@ class CameraController(context: Context, private val listener: Listener) {
         const val FOCUS_TIMEOUT_MS = 1200L
         const val PRECAPTURE_TIMEOUT_MS = 1800L
         const val LOCK_TIMEOUT_MS = 400L
-        const val EXPOSE_TIMEOUT_MS = 3000L
+        const val EXPOSE_TIMEOUT_MS = 6000L
     }
 }

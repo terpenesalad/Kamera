@@ -32,7 +32,7 @@ def frame_box(shot):
 
 
 problems = 0
-for name in ["00-first-launch", "10-film-cabinet", "20-video-mode", "30-gallery", "31-viewer", "32-darkroom", "33-after-save"]:
+for name in ["vf-aura400", "vf-filtered", "11-filter-holder", "00-first-launch", "10-film-cabinet", "20-video-mode", "30-gallery", "31-viewer", "32-darkroom", "33-after-save"]:
     path = os.path.join(out, name + ".png")
     if os.path.exists(path):
         print(f"--- {name}\n{luma_map(path)}")

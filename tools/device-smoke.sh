@@ -58,6 +58,7 @@ tap_text() {
   tap $(( ($1 + $3) / 2 )) $(( ($2 + $4) / 2 ))
 }
 
+top() { adb shell dumpsys activity activities | grep -m1 -E "topResumedActivity|mResumedActivity" | sed -E 's/.*(app\.kamera[^ ]*).*/\1/' | cut -c1-90; }
 launch() { adb shell am start -W -n $PKG/.ui.CameraActivity >/dev/null; }
 set_prefs() {
   adb shell am force-stop $PKG
@@ -88,7 +89,8 @@ set_prefs aura400 "filterColor=w81b
 filterGrad=tobacco2
 filterGradPosition=0.1
 filterEffect=star4"
-launch; sleep 12; shot vf-filtered
+launch; sleep 15; shot vf-filtered
+echo "on screen: $(top)"
 adb shell input keyevent KEYCODE_VOLUME_UP
 wait_for_new "${BEFORE:-0}" || fail "no photo saved through filters"
 NEWEST=$(adb shell "ls -t /sdcard/DCIM/Kamera | head -1" | tr -d '\r')
@@ -114,7 +116,6 @@ else
 fi
 
 note "gallery, viewer and darkroom"
-top() { adb shell dumpsys activity activities | grep -m1 -E "topResumedActivity|mResumedActivity" | sed -E 's/.*(app\.kamera[^ ]*).*/\1/' | cut -c1-90; }
 expect() {
   local where; where=$(top); echo "on screen: $where"
   case "$where" in *"$1"*) ;; *) fail "expected $1 but found $where" ;; esac
@@ -136,7 +137,7 @@ if [ -n "$BADNAMES" ]; then fail "file names reveal information: $BADNAMES"; fi
 
 adb logcat -d > "$OUT/logcat.txt"
 note "app log"
-grep -E " [IWE] Kamera| [EF] (AndroidRuntime|CameraDevice|MediaCodec|MediaMuxer|AudioRecord|BufferQueue|ImageReader|GLConsumer|SurfaceTexture)|GLConsumer|ANR in|Shader compile|Program link" "$OUT/logcat.txt" | grep -v "Can.t dequeue" | cut -c1-260 | tail -80
+grep -E "ActivityTaskManager: START|Process app.kamera|Force stopping|has died| [IWE] Kamera| [EF] (AndroidRuntime|CameraDevice|MediaCodec|MediaMuxer|AudioRecord|BufferQueue|ImageReader|GLConsumer|SurfaceTexture)|GLConsumer|ANR in|Shader compile|Program link" "$OUT/logcat.txt" | grep -v "Can.t dequeue" | cut -c1-260 | tail -80
 if grep -q "ANR in $PKG" "$OUT/logcat.txt"; then
   fail "the app stopped responding"
   grep -A12 "ANR in $PKG" "$OUT/logcat.txt" | cut -c1-240 | head -40

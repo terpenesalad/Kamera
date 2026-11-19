@@ -9,16 +9,16 @@ uniform vec4 uAxesB;
 uniform float uAxisCount;
 uniform float uDecay;      // In texels.
 
-const int STEPS = 28;
+const int STEPS = 20;
 const float STAR_GAIN = 0.22;
 
 vec3 rays(vec2 axis) {
     vec3 sum = vec3(0.0);
-    vec2 step = axis * uTexel;
+    vec2 stride = axis * uTexel;
     for (int i = 1; i <= STEPS; i++) {
         float d = float(i);
         float w = exp(-d / uDecay);
-        sum += (glowDecode(texture(uInput, vFrameUv + step * d).rgb) + glowDecode(texture(uInput, vFrameUv - step * d).rgb)) * w;
+        sum += (glowDecode(texture(uInput, vFrameUv + stride * d).rgb) + glowDecode(texture(uInput, vFrameUv - stride * d).rgb)) * w;
     }
     return sum;
 }
