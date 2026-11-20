@@ -40,6 +40,49 @@ class GrainAndUniformsTest {
     }
 
     @Test
+    fun mipTableMatchesTheTile() {
+        // FilmUniforms calibrates grain from this table, so it must describe the tile the GPU gets.
+        val tile = GrainTile.generate()
+        var n = GrainTile.SIZE
+        var level = DoubleArray(n * n * 4) { (tile[it].toInt() and 255).toDouble() }
+        for (lod in 0 until 6) {
+            var std = 0.0
+            for (c in 0 until 3) {
+                var mean = 0.0
+                var square = 0.0
+                for (i in 0 until n * n) {
+                    val v = (level[i * 4 + c] / 255.0 - 0.5) * 2.0 * GrainTile.RANGE
+                    mean += v
+                    square += v * v
+                }
+                mean /= n * n
+                std += kotlin.math.sqrt(square / (n * n) - mean * mean) / 3.0
+            }
+            assertEquals("mip $lod", FilmUniforms.TILE_MIP_STD[lod].toDouble(), std, 0.002)
+            val half = n / 2
+            val next = DoubleArray(half * half * 4)
+            for (y in 0 until half) for (x in 0 until half) for (c in 0 until 4) {
+                val sum = level[((2 * y) * n + 2 * x) * 4 + c] + level[((2 * y) * n + 2 * x + 1) * 4 + c] +
+                    level[((2 * y + 1) * n + 2 * x) * 4 + c] + level[((2 * y + 1) * n + 2 * x + 1) * 4 + c]
+                next[(y * half + x) * 4 + c] = kotlin.math.floor(sum / 4 + 0.5)
+            }
+            level = next
+            n = half
+        }
+    }
+
+    @Test
+    fun fullResolutionPhotosMinifyTheGrainTile() {
+        // Magnifying a coarse tile turns grain into blocky pixels. Each texel is half a grain correlation
+        // length, so up to about 1.7 pixels per texel still interpolates smoothly, even for 3200-speed film.
+        for (stock in FilmCatalog.all.filter { it.grain.rmsGranularity > 0f }) {
+            val u = FilmUniforms.compute(stock, Recipe(stock.id), 4000, 3000)
+            val texelsPerPixel = u.grainUvScaleY * GrainTile.SIZE / 3000f
+            assertTrue("${stock.id}: $texelsPerPixel texels per pixel", texelsPerPixel >= 0.6f)
+        }
+    }
+
+    @Test
     fun grainKeepsItsPhysicalSizeAtEveryResolution() {
         val stock = FilmCatalog.find("aura400")
         val recipe = Recipe(stock.id)

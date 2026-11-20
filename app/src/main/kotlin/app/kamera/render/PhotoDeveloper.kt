@@ -12,6 +12,7 @@ import android.os.HandlerThread
 import android.os.Looper
 import android.util.Log
 import app.kamera.camera.StillCapture
+import app.kamera.codec.JpegEncoder
 import app.kamera.data.Library
 import app.kamera.data.LibraryItem
 import app.kamera.data.MediaKind
@@ -113,13 +114,10 @@ class PhotoDeveloper(
 
         val placeholder = library.newItem(MediaKind.PHOTO, negW, negH, 0L, null, filmBaked = false)
         try {
-            val negativeBitmap = readTexture(film, negative)
-            writeJpeg(negativeBitmap, placeholder.negative, NEGATIVE_QUALITY)
-            negativeBitmap.recycle()
+            writeJpeg(readTexture(film, negative), placeholder.negative, NEGATIVE_QUALITY)
             placeholder.writeRecipe(recipe)
             val developed = developTexture(film, negative.texture, negW, negH, flippedV = false, recipe)
             val item = publish(placeholder, developed, existing = null)
-            developed.recycle()
             Log.i(TAG, "Developed ${item.width}x${item.height} on ${recipe.stockId} in ${android.os.SystemClock.elapsedRealtime() - startedMs} ms")
             return item
         } finally {
@@ -136,9 +134,7 @@ class PhotoDeveloper(
                 val developed = developBitmap(film, negative, recipe)
                 negative.recycle()
                 item.writeRecipe(recipe)
-                val updated = publish(item, developed, existing = item.mediaUri)
-                developed.recycle()
-                updated
+                publish(item, developed, existing = item.mediaUri)
             }.onFailure { Log.e(TAG, "Developing failed", it) }.getOrNull()
             main.post { onDone(result) }
         }
@@ -162,19 +158,17 @@ class PhotoDeveloper(
                 decoded.recycle()
                 val recipe = Recipe(stockId)
                 val item = library.newItem(MediaKind.PHOTO, bitmap.width, bitmap.height, 0L, null, filmBaked = false)
-                writeJpeg(bitmap, item.negative, NEGATIVE_QUALITY)
+                writeJpeg(Pixels.of(bitmap), item.negative, NEGATIVE_QUALITY)
                 item.writeRecipe(recipe)
                 val developed = developBitmap(film, bitmap, recipe)
                 bitmap.recycle()
-                val published = publish(item, developed, existing = null)
-                developed.recycle()
-                published
+                publish(item, developed, existing = null)
             }.onFailure { Log.e(TAG, "Import failed", it) }.getOrNull()
             main.post { onDone(result) }
         }
     }
 
-    private fun developBitmap(film: FilmEngine, negative: Bitmap, recipe: Recipe): Bitmap {
+    private fun developBitmap(film: FilmEngine, negative: Bitmap, recipe: Recipe): Pixels {
         val texture = GlTextures.create2D(GLES30.GL_LINEAR, GLES30.GL_CLAMP_TO_EDGE)
         GLUtils.texImage2D(GLES30.GL_TEXTURE_2D, 0, negative, 0)
         try {
@@ -191,7 +185,7 @@ class PhotoDeveloper(
         height: Int,
         flippedV: Boolean,
         recipe: Recipe,
-    ): Bitmap {
+    ): Pixels {
         val stock = FilmCatalog.find(recipe.stockId)
         film.uploadLut(LutStore.get(stock, recipe.grade))
         val (outW, outH) = FrameGeometry.outputSize(width, height, recipe.framing)
@@ -202,57 +196,53 @@ class PhotoDeveloper(
         film.updateGlow(glow, source, uniforms, aspect)
         val target = RenderTarget(outW, outH)
         film.drawFilm(source, glow, uniforms, OutputTarget(target.framebuffer, 0, 0, outW, outH, flipY = true))
-        val bitmap = readPixels(target.framebuffer, outW, outH)
+        val pixels = readPixels(target.framebuffer, outW, outH)
         target.release()
         glow.release()
-        return bitmap
+        return pixels
     }
 
-    /** Reads a bottom-up render target as a normal top-down bitmap. */
-    private fun readTexture(film: FilmEngine, source: RenderTarget): Bitmap {
+    /** Reads a bottom-up render target as normal top-down pixels. */
+    private fun readTexture(film: FilmEngine, source: RenderTarget): Pixels {
         val flipped = RenderTarget(source.width, source.height)
         film.drawOriginal(
             SourceFrame(source.texture, source.width, source.height, Affine.IDENTITY),
             OutputTarget(flipped.framebuffer, 0, 0, source.width, source.height, flipY = true),
         )
-        val bitmap = readPixels(flipped.framebuffer, source.width, source.height)
+        val pixels = readPixels(flipped.framebuffer, source.width, source.height)
         flipped.release()
-        return bitmap
+        return pixels
     }
 
-    private fun readPixels(framebuffer: Int, width: Int, height: Int): Bitmap {
+    private fun readPixels(framebuffer: Int, width: Int, height: Int): Pixels {
         val pixels = ByteBuffer.allocateDirect(width * height * 4).order(ByteOrder.nativeOrder())
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, framebuffer)
         GLES30.glPixelStorei(GLES30.GL_PACK_ALIGNMENT, 1)
         GLES30.glReadPixels(0, 0, width, height, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, pixels)
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
         pixels.position(0)
-        return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).apply { copyPixelsFromBuffer(pixels) }
+        return Pixels(pixels, width, height)
     }
 
-    private fun writeJpeg(bitmap: Bitmap, file: File, quality: Int) {
-        file.outputStream().buffered().use { bitmap.compress(Bitmap.CompressFormat.JPEG, quality, it) }
+    /** Full-colour (4:4:4) JPEG straight from pixels: no EXIF, location, date or device data. */
+    private fun writeJpeg(pixels: Pixels, file: File, quality: Int) {
+        file.outputStream().buffered(1 shl 16).use { JpegEncoder.encode(pixels.buffer, pixels.width, pixels.height, quality, it) }
     }
 
     private fun publish(
         item: LibraryItem,
-        developed: Bitmap,
+        developed: Pixels,
         existing: Uri?,
     ): LibraryItem {
-        val scale = THUMB_EDGE.toFloat() / max(developed.width, developed.height)
-        val thumb = Bitmap.createScaledBitmap(
-            developed,
-            (developed.width * scale).roundToInt().coerceAtLeast(1),
-            (developed.height * scale).roundToInt().coerceAtLeast(1),
-            true,
-        )
-        writeJpeg(thumb, item.thumbnail, THUMB_QUALITY)
+        val thumb = thumbnailOf(developed)
+        item.thumbnail.outputStream().buffered().use { thumb.compress(Bitmap.CompressFormat.JPEG, THUMB_QUALITY, it) }
         thumb.recycle()
 
         val temp = File.createTempFile("develop", ".jpg", context.cacheDir)
         try {
-            // Encoded straight from pixels, so the file carries no EXIF, location, date or device data.
+            val encodeStart = android.os.SystemClock.elapsedRealtime()
             writeJpeg(developed, temp, FINAL_QUALITY)
+            Log.i(TAG, "Encoded ${developed.width}x${developed.height} at q$FINAL_QUALITY 4:4:4 in ${android.os.SystemClock.elapsedRealtime() - encodeStart} ms, ${temp.length() / 1024} KB")
             val uri = writer.saveJpeg(temp, existing)
             val updated = item.copy(mediaUri = uri, width = developed.width, height = developed.height)
             library.commit(updated)
@@ -262,11 +252,55 @@ class PhotoDeveloper(
         }
     }
 
+    /**
+     * Shrinks by halves (each an exact 2 × 2 average) before the last step, so fine grain averages
+     * out the way it does on a print instead of aliasing into sparkle.
+     */
+    private fun thumbnailOf(pixels: Pixels): Bitmap {
+        var current = pixels.toBitmap()
+        while (max(current.width, current.height) >= THUMB_EDGE * 2) {
+            val half = Bitmap.createScaledBitmap(current, (current.width / 2).coerceAtLeast(1), (current.height / 2).coerceAtLeast(1), true)
+            current.recycle()
+            current = half
+        }
+        val scale = THUMB_EDGE.toFloat() / max(current.width, current.height)
+        if (scale >= 1f) return current
+        val thumb = Bitmap.createScaledBitmap(
+            current,
+            (current.width * scale).roundToInt().coerceAtLeast(1),
+            (current.height * scale).roundToInt().coerceAtLeast(1),
+            true,
+        )
+        current.recycle()
+        return thumb
+    }
+
+    /** Tightly packed, top-down RGBA8 pixels. */
+    private class Pixels(val buffer: ByteBuffer, val width: Int, val height: Int) {
+        fun toBitmap(): Bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).apply {
+            buffer.position(0)
+            copyPixelsFromBuffer(buffer)
+            buffer.position(0)
+        }
+
+        companion object {
+            fun of(bitmap: Bitmap): Pixels {
+                val argb = if (bitmap.config == Bitmap.Config.ARGB_8888) bitmap else bitmap.copy(Bitmap.Config.ARGB_8888, false)
+                val buffer = ByteBuffer.allocateDirect(argb.width * argb.height * 4).order(ByteOrder.nativeOrder())
+                argb.copyPixelsToBuffer(buffer)
+                buffer.position(0)
+                if (argb !== bitmap) argb.recycle()
+                return Pixels(buffer, bitmap.width, bitmap.height)
+            }
+        }
+    }
+
     private companion object {
         const val TAG = "KameraDarkroom"
-        const val NEGATIVE_QUALITY = 96
-        const val FINAL_QUALITY = 95
-        const val THUMB_QUALITY = 86
+        // Maximum quality, with full colour resolution: visually lossless even at 100 % zoom.
+        const val NEGATIVE_QUALITY = 100
+        const val FINAL_QUALITY = 100
+        const val THUMB_QUALITY = 88
         const val THUMB_EDGE = 640
         const val MAX_IMPORT_EDGE = 8192
     }

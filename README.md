@@ -62,6 +62,12 @@ Filters stay with each photo's recipe, so you can add, change or remove them lat
 
 **Always dark:** every screen stays dark, even if your phone is set to light mode.
 
+## Photo quality
+
+Photos are saved at full sensor resolution as maximum-quality JPEGs (quality 100) with full colour
+resolution (4:4:4). Most camera apps halve the colour resolution; Kamera keeps every pixel's colour, so fine
+colour grain and edges stay crisp at 100 % zoom. Files are larger as a result, typically 5–15 MB.
+
 ## Privacy
 
 - Saved photos contain only the picture: no location, date, camera model or settings.
@@ -77,7 +83,8 @@ photo developer and the editor. On top of that:
 - **Same sensor path.** Stills are captured as YUV from the same ISP path as the preview, with exposure and
   white balance locked to what was on screen. Vendor still processing never runs.
 - **Same colour.** Each stock is baked into one 3D LUT that every output samples.
-- **Resolution-independent grain and glow.** Grain has a physical size on a virtual 35 mm frame, and halation
+- **Resolution-independent grain and glow.** Grain has a physical size on a virtual 35 mm frame (rendered at
+  twice the grain's resolution, so it stays smooth and organic at 100 % zoom), and halation
   runs in fixed-resolution buffers, so a 1080p preview and a 12 MP photo agree at the same viewing size.
 - **Same framing.** The viewfinder crops to the exact format that will be saved.
 

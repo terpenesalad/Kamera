@@ -7,6 +7,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Matrix
+import android.graphics.Paint
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -128,7 +129,7 @@ class ViewerActivity : Activity() {
             val bitmap = runCatching {
                 val uri = item.mediaUri
                 if (item.kind == MediaKind.PHOTO && uri != null) {
-                    decodeBounded({ contentResolver.openInputStream(uri) }, MAX_VIEW_EDGE)
+                    decodeFullResolution(contentResolver, uri)
                 } else {
                     null
                 }
@@ -264,7 +265,14 @@ class ZoomImageView(context: Context, private val onSwipe: (Int) -> Unit) : View
         },
     )
 
+    // Bilinear filtering with mipmaps: smooth when zoomed in, no aliased grain when zoomed out.
+    private val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG)
+
     fun setPicture(picture: Bitmap?) {
+        picture?.let {
+            if (it.config != Bitmap.Config.HARDWARE) it.setHasMipMap(true)
+            it.prepareToDraw()
+        }
         bitmap = picture
         scale = 1f
         panX = 0f
@@ -293,13 +301,20 @@ class ZoomImageView(context: Context, private val onSwipe: (Int) -> Unit) : View
     }
 
     override fun onDraw(canvas: Canvas) {
-        val picture = bitmap ?: return
+        var picture = bitmap ?: return
+        if (picture.width > canvas.maximumBitmapWidth || picture.height > canvas.maximumBitmapHeight) {
+            // Larger than this GPU can hold as one texture: keep the largest size it can show.
+            val fit = min(canvas.maximumBitmapWidth.toFloat() / picture.width, canvas.maximumBitmapHeight.toFloat() / picture.height)
+            picture = Bitmap.createScaledBitmap(picture, (picture.width * fit).toInt(), (picture.height * fit).toInt(), true)
+                .also { it.setHasMipMap(true) }
+            bitmap = picture
+        }
         fitScale = min(width.toFloat() / picture.width, height.toFloat() / picture.height)
         drawMatrix.reset()
         drawMatrix.postTranslate(-picture.width / 2f, -picture.height / 2f)
         drawMatrix.postScale(fitScale * scale, fitScale * scale)
         drawMatrix.postTranslate(width / 2f + panX, height / 2f + panY)
-        canvas.drawBitmap(picture, drawMatrix, null)
+        canvas.drawBitmap(picture, drawMatrix, paint)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {

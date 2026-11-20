@@ -12,13 +12,18 @@ import kotlin.math.sqrt
  * Deterministic, seamlessly tiling Gaussian noise.
  *
  * The four channels are statistically independent: RGB drive the dye layers, alpha drives dither.
- * Each channel is low-pass filtered so one texel equals one grain correlation length.
+ * The grain channels are sampled at [OVERSAMPLE] texels per grain correlation length, so a full
+ * resolution photo minifies the tile (smooth, organic clumps) instead of magnifying it (blocky).
+ * The dither channel stays close to white noise, which breaks up banding best.
  */
 object GrainTile {
     const val SIZE = 512
 
-    private const val SIGMA_TEXELS = 0.72f
-    private const val KERNEL_RADIUS = 3
+    /** Texels per grain correlation length. */
+    const val OVERSAMPLE = 2f
+
+    private const val DITHER_SIGMA_TEXELS = 0.72f
+    private const val GRAIN_SIGMA_TEXELS = DITHER_SIGMA_TEXELS * OVERSAMPLE
 
     /** Standard deviations stored in the 8-bit range: value = 0.5 + n / (2 * RANGE). */
     const val RANGE = 3f
@@ -26,12 +31,13 @@ object GrainTile {
     /** Returns `SIZE² × 4` bytes of RGBA8 data. */
     fun generate(seed: Long = 0x4B414D455241L): ByteArray {
         val output = ByteArray(SIZE * SIZE * 4)
-        val kernel = gaussianKernel()
+        val grainKernel = gaussianKernel(GRAIN_SIGMA_TEXELS)
+        val ditherKernel = gaussianKernel(DITHER_SIGMA_TEXELS)
         var state = seed
         for (channel in 0 until 4) {
             state = state * 6364136223846793005L + 1442695040888963407L
             val field = whiteNoise(state)
-            val filtered = filterWrapped(field, kernel)
+            val filtered = filterWrapped(field, if (channel == 3) ditherKernel else grainKernel)
             normalise(filtered)
             for (i in filtered.indices) {
                 val v = 0.5f + filtered[i] / (2f * RANGE)
@@ -41,12 +47,13 @@ object GrainTile {
         return output
     }
 
-    private fun gaussianKernel(): FloatArray {
-        val k = FloatArray(KERNEL_RADIUS * 2 + 1)
+    private fun gaussianKernel(sigma: Float): FloatArray {
+        val radius = kotlin.math.ceil(sigma * 3.5f).toInt()
+        val k = FloatArray(radius * 2 + 1)
         var sum = 0f
         for (i in k.indices) {
-            val d = (i - KERNEL_RADIUS).toFloat()
-            k[i] = exp(-(d * d) / (2f * SIGMA_TEXELS * SIGMA_TEXELS))
+            val d = (i - radius).toFloat()
+            k[i] = exp(-(d * d) / (2f * sigma * sigma))
             sum += k[i]
         }
         for (i in k.indices) k[i] /= sum
@@ -70,11 +77,12 @@ object GrainTile {
 
     private fun filterWrapped(src: FloatArray, kernel: FloatArray): FloatArray {
         val mask = SIZE - 1
+        val radius = kernel.size / 2
         val horizontal = FloatArray(src.size)
         for (y in 0 until SIZE) {
             for (x in 0 until SIZE) {
                 var sum = 0f
-                for (k in kernel.indices) sum += kernel[k] * src[y * SIZE + ((x + k - KERNEL_RADIUS) and mask)]
+                for (k in kernel.indices) sum += kernel[k] * src[y * SIZE + ((x + k - radius) and mask)]
                 horizontal[y * SIZE + x] = sum
             }
         }
@@ -82,7 +90,7 @@ object GrainTile {
         for (y in 0 until SIZE) {
             for (x in 0 until SIZE) {
                 var sum = 0f
-                for (k in kernel.indices) sum += kernel[k] * horizontal[((y + k - KERNEL_RADIUS) and mask) * SIZE + x]
+                for (k in kernel.indices) sum += kernel[k] * horizontal[((y + k - radius) and mask) * SIZE + x]
                 out[y * SIZE + x] = sum
             }
         }

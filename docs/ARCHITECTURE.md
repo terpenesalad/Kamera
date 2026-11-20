@@ -35,7 +35,9 @@ Grain is applied before the LUT, so the film's characteristic curve shapes it th
 background thread; exposure, white balance and spatial effects are shader uniforms and update instantly.
 
 Grain amplitude is derived from each stock's RMS granularity: density noise through a 48 µm aperture on a
-24 mm frame. `tools/shader-lab` measures this back from rendered pixels.
+24 mm frame. `tools/shader-lab` measures this back from rendered pixels. The grain tile holds two texels per
+grain correlation length, so a full-resolution photo always minifies it (trilinear, smooth) rather than
+magnifying near-white noise into blocky pixels.
 
 ## Threads
 
@@ -50,7 +52,8 @@ Grain amplitude is derived from each stock's RMS granularity: density noise thro
 
 ## Storage
 
-Finished files carry no EXIF, and `Mp4Scrubber` clears dates and device tags from videos. Each library item lives in `files/library/<id>/`: `negative.jpg` (the upright undeveloped frame),
+Photos and negatives are written by `core/.../codec/JpegEncoder`: baseline JPEG at quality 100 with no chroma
+subsampling (4:4:4), encoded in parallel stripes joined by restart markers. Finished files carry no EXIF, and `Mp4Scrubber` clears dates and device tags from videos. Each library item lives in `files/library/<id>/`: `negative.jpg` (the upright undeveloped frame),
 `recipe.txt`, `thumb.jpg` and `meta.txt`. Finished pictures are published to `DCIM/Kamera`. Clips recorded in
 the app carry their film look in the footage, so the editor grades them without developing them twice.
 

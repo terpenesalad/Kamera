@@ -64,16 +64,16 @@ class FilmUniforms(
         /** Physical size of the frame's short edge, in micrometres (a 35 mm still frame). */
         private const val FRAME_SHORT_EDGE_UM = 24000f
 
-        private const val GRAIN_LOD_COMPENSATION = 0.115f
+        private const val GRAIN_LOD_COMPENSATION = 0.132f
         private const val RMS_APERTURE_UM = 48f
 
         /** Brings grain measured on the GL bench onto the published scale. */
-        private const val RMS_BENCH_GAIN = 1.08f
+        private const val RMS_BENCH_GAIN = 0.922f
         private const val LOG10_2 = 0.30103f
         private const val ACUTANCE_REFERENCE_EDGE = 1500f
 
         /** Standard deviation of the unit-variance grain tile averaged over each mip level. */
-        private val TILE_MIP_STD = floatArrayOf(0.9976f, 0.7991f, 0.5134f, 0.2861f, 0.1497f, 0.0759f, 0.0369f, 0.0173f)
+        internal val TILE_MIP_STD = floatArrayOf(0.9976f, 0.9409f, 0.7782f, 0.5120f, 0.2874f, 0.1507f, 0.0776f, 0.0397f)
 
         private fun tileStd(lod: Float): Float {
             val clamped = lod.coerceIn(0f, TILE_MIP_STD.size - 1.001f)
@@ -104,8 +104,9 @@ class FilmUniforms(
             val pushGrain = 1f + 0.38f * max(push, 0f) + 0.12f * min(push, 0f)
             val sizeUm = stock.grain.sizeUm * fx.grainSize.coerceIn(0.5f, 2.5f)
 
-            // One tile texel equals one grain correlation length on the film plane.
-            val tilesAcrossShortEdge = FRAME_SHORT_EDGE_UM / (sizeUm * GrainTile.SIZE)
+            // The tile holds GrainTile.OVERSAMPLE texels per grain correlation length on the film plane.
+            val texelUm = sizeUm / GrainTile.OVERSAMPLE
+            val tilesAcrossShortEdge = FRAME_SHORT_EDGE_UM / (texelUm * GrainTile.SIZE)
             val texelsPerPixel = tilesAcrossShortEdge * GrainTile.SIZE / shortEdge
             val lod = log2(max(texelsPerPixel, 1f))
 
@@ -115,7 +116,7 @@ class FilmUniforms(
 
             // Calibrate against the published measure: density noise seen through a 48 µm aperture.
             val gamma = stock.chemistry.filmGamma
-            val apertureLod = log2(max(RMS_APERTURE_UM / sizeUm, 1f))
+            val apertureLod = log2(max(RMS_APERTURE_UM / texelUm, 1f))
             val grainStops = RMS_BENCH_GAIN * stock.grain.rmsGranularity / 1000f / (gamma * LOG10_2 * layeredGrainStd(apertureLod))
             val reversal = stock.chemistry.process == FilmProcess.REVERSAL
             val densitySlope = gamma * LOG10_2 / if (reversal) -1.2f else 0.8f

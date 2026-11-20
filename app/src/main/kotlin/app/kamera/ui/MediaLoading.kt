@@ -56,6 +56,26 @@ object ThumbnailLoader {
 }
 
 /** Decodes a picture no larger than [maxEdge] on its longest side. */
+/**
+ * Decodes a photo at full resolution for close inspection, scaling down (smoothly, not by skipping
+ * pixels) only past what a single bitmap can be drawn at.
+ */
+fun decodeFullResolution(resolver: android.content.ContentResolver, uri: Uri): Bitmap? {
+    val source = android.graphics.ImageDecoder.createSource(resolver, uri)
+    return android.graphics.ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+        decoder.allocator = android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE
+        val w = info.size.width
+        val h = info.size.height
+        val fit = minOf(1f, MAX_FULL_EDGE.toFloat() / maxOf(w, h), kotlin.math.sqrt(MAX_FULL_PIXELS / (w.toFloat() * h)))
+        if (fit < 1f) decoder.setTargetSize((w * fit).roundToInt().coerceAtLeast(1), (h * fit).roundToInt().coerceAtLeast(1))
+    }
+}
+
+private const val MAX_FULL_EDGE = 8192
+
+/** Canvas refuses bitmaps over 100 MiB; this keeps an ARGB picture under it. */
+private const val MAX_FULL_PIXELS = 25_000_000f
+
 fun decodeBounded(open: () -> java.io.InputStream?, maxEdge: Int): Bitmap? {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     open()?.use { BitmapFactory.decodeStream(it, null, bounds) }
